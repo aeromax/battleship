@@ -13,12 +13,16 @@ const io = new Server(server, {
   },
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 const DATA_FILE = path.join(__dirname, '..', 'data', 'saves.json');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/js', express.static(__dirname));
+
+app.get('/test', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'test.html'));
+});
 
 /**
  * Persisted save data keyed by player id.
@@ -79,8 +83,12 @@ app.get('/api/status', (_req, res) => {
   });
 });
 
-// Fallback for client-side routing.
-app.get('/', (_req, res) => {
+// Fallback for client-side routing on non-API GET requests.
+app.get(/^\/(?!api)(?!socket\.io).*/, (req, res, next) => {
+  if (req.method !== 'GET') {
+    next();
+    return;
+  }
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 

@@ -2,6 +2,8 @@ import { ROWS, COLUMNS, MODES, GAME_MODES, DIFFICULTIES, SOUNDS } from './game_s
 import { MAX_UNITS, AVAILABLE_UNITS, UNIT_IMAGES } from './vehicles.js';
 
 const socket = io();
+const LOCAL_SAVE_KEY = 'gridops-local-saves';
+let selectedLocalSave = null;
 
 const state = {
   view: MODES.HOME,
@@ -21,8 +23,6 @@ const state = {
   gameStarted: false,
   currentTurnSocket: null,
   playerTurn: false,
-  playerRoll: null,
-  opponentRoll: null,
   dieComplete: false,
   attackHistory: new Set(),
   attackResults: {},
@@ -33,86 +33,425 @@ const state = {
   statusMessages: [],
   continuePayload: null,
   awaitingSave: false,
+  draggingUnit: null,
 };
 
-const elements = {
-  screens: {
-    home: document.getElementById('homeScreen'),
-    setup: document.getElementById('setupScreen'),
-    game: document.getElementById('gameScreen'),
-  },
-  modals: {
-    mode: document.getElementById('modeModal'),
-    postGame: document.getElementById('postGameModal'),
-  },
-  inputs: {
-    playerName: document.getElementById('playerName'),
-  },
-  buttons: {
-    newGame: document.getElementById('newGameBtn'),
-    continue: document.getElementById('continueBtn'),
-    closeModal: document.getElementById('closeModalBtn'),
-    startSolo: document.getElementById('startSoloBtn'),
-    randomize: document.getElementById('randomizeBtn'),
-    clearBoard: document.getElementById('clearBoardBtn'),
-    ready: document.getElementById('readyBtn'),
-    backHome: document.getElementById('backToHomeBtn'),
-    rollDice: document.getElementById('rollDiceBtn'),
-    fire: document.getElementById('fireBtn'),
-    save: document.getElementById('saveBtn'),
-    playAgain: document.getElementById('playAgainBtn'),
-    returnHome: document.getElementById('returnHomeBtn'),
-    refreshPlayers: document.getElementById('refreshPlayersBtn'),
-  },
-  lists: {
-    unit: document.getElementById('unitList'),
-    players: document.getElementById('playerList'),
-  },
-  toggles: {
-    orientation: document.querySelectorAll('[data-orientation]'),
-    difficulty: document.querySelectorAll('#soloOptions .chip'),
-  },
-  boards: {
-    placement: document.getElementById('placementBoard'),
-    player: document.getElementById('playerBoard'),
-    attack: document.getElementById('attackBoard'),
-  },
-  hud: {
-    statusFeed: document.getElementById('statusFeed'),
-    diceDisplay: document.getElementById('diceDisplay'),
-    turnBanner: document.getElementById('turnBanner'),
-    homeStatus: document.getElementById('homeStatus'),
-    postGameTitle: document.getElementById('postGameTitle'),
-    postGameMessage: document.getElementById('postGameMessage'),
-  },
-  panels: {
-    soloOptions: document.getElementById('soloOptions'),
-    pvpOptions: document.getElementById('pvpOptions'),
-  },
+const SFX_PATHS = {
+  FIRE: '/assets/sfx/sfx_fire.wav',
+  HIT: '/assets/sfx/sfx_hit.wav',
+  MISS: '/assets/sfx/sfx_miss.wav',
 };
 
-const audioCtx = new (window.AudioContext || window.webkitAudioContext || null)();
+function playSfx(path) {
+  if (typeof Audio === 'undefined' || !path) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const audio = new Audio(path);
+    audio.preload = 'auto';
+    let resolved = false;
+    const finalize = () => {
+      if (resolved) return;
+      resolved = true;
+      audio.removeEventListener('ended', finalize);
+      audio.removeEventListener('error', finalize);
+      resolve();
+    };
+    audio.addEventListener('ended', finalize);
+    audio.addEventListener('error', finalize);
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(finalize);
+    }
+  });
+}
 
-function playTone(frequency, duration = 180) {
-  if (!audioCtx) return;
-  const oscillator = audioCtx.createOscillator();
-  const gainNode = audioCtx.createGain();
-  oscillator.type = 'square';
-  oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
-  gainNode.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 0.02);
-  gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration / 1000);
-  oscillator.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-  oscillator.start();
-  oscillator.stop(audioCtx.currentTime + duration / 1000);
+let elements = null;
+let menuOpen = false;
+let dragPreviewCells = [];
+
+function syncAttackInterface() {
+  if (!elements) return;
+  const overlayActive = Boolean(state.playerTurn && state.dieComplete);
+  if (elements.screens?.game) {
+    elements.screens.game.classList.toggle('attack-mode', overlayActive);
+  }
+  const fireButton = elements.buttons?.fire;
+  if (fireButton) {
+    const canFire = overlayActive && Boolean(state.attackSelection);
+    fireButton.disabled = !canFire;
+    fireButton.classList.toggle('disabled', !canFire);
+  }
+}
+
+function clearDragPreview() {
+  if (!elements?.boards?.placement) return;
+  dragPreviewCells.forEach((coord) => {
+    const cell = elements.boards.placement.querySelector(`[data-coord="${coord}"]`);
+    if (cell) {
+      cell.classList.remove('drag-preview');
+    }
+  });
+  dragPreviewCells = [];
+}
+
+function applyDragPreview(coords) {
+  clearDragPreview();
+  if (!coords || !coords.length) return;
+  dragPreviewCells = coords.slice();
+  dragPreviewCells.forEach((coord) => {
+    const cell = elements.boards.placement.querySelector(`[data-coord="${coord}"]`);
+    if (cell) {
+      cell.classList.add('drag-preview');
+    }
+  });
+}
+
+function handlePlacementDragOver(event) {
+  if (state.setupLocked || !state.draggingUnit) return;
+  event.preventDefault();
+  const cell = event.target.closest ? event.target.closest('.cell') : null;
+  if (!cell || !cell.dataset.coord) {
+    clearDragPreview();
+    return;
+  }
+  const coordinate = cell.dataset.coord;
+  const previewCoords = canPlaceUnit(state.placementBoard, state.draggingUnit, coordinate, state.orientation);
+  if (!previewCoords) {
+    clearDragPreview();
+    return;
+  }
+  applyDragPreview(previewCoords);
+}
+
+function handlePlacementDragLeave(event) {
+  if (!elements?.boards?.placement) return;
+  const placement = elements.boards.placement;
+  const target = event.relatedTarget;
+  if (target && placement.contains(target)) {
+    return;
+  }
+  clearDragPreview();
+}
+
+function handlePlacementDrop(event) {
+  if (state.setupLocked) return;
+  event.preventDefault();
+  const cell = event.target.closest ? event.target.closest('.cell') : null;
+  if (!cell || !cell.dataset.coord) {
+    clearDragPreview();
+    state.draggingUnit = null;
+    return;
+  }
+  attemptPlaceSelectedUnit(cell.dataset.coord);
+  clearDragPreview();
+  state.draggingUnit = null;
+}
+
+function bindPlacementDragHandlers() {
+  const placement = elements?.boards?.placement;
+  if (!placement) return;
+  placement.addEventListener('dragover', handlePlacementDragOver);
+  placement.addEventListener('dragleave', handlePlacementDragLeave);
+  placement.addEventListener('drop', handlePlacementDrop);
+}
+
+function highlightUnitSelection(unitName) {
+  if (!elements?.lists?.unit) return;
+  elements.lists.unit.querySelectorAll('.unit-item').forEach((item) => {
+    item.classList.toggle('selected', item.dataset.unit === unitName);
+  });
+}
+
+function bindVehicleDragSources() {
+  const icons = document.querySelectorAll('.unit-item');
+  if (!icons.length) return;
+  icons.forEach((icon) => {
+    const unitName = icon.dataset.unit;
+    if (!unitName) return;
+    icon.addEventListener('dragstart', (event) => {
+      const unit = AVAILABLE_UNITS.find((item) => item.name === unitName);
+      if (!unit) return;
+      state.selectedUnit = unit;
+      state.draggingUnit = unit;
+      highlightUnitSelection(unit.name);
+      const transfer = event.dataTransfer;
+      if (transfer) {
+        transfer.setData('text/plain', unitName);
+        if (typeof transfer.setEffectAllowed === 'function') {
+          transfer.setEffectAllowed('copy');
+        }
+      }
+    });
+    icon.addEventListener('dragend', () => {
+      state.draggingUnit = null;
+      clearDragPreview();
+    });
+  });
+}
+
+function collectElements(root = document) {
+  return {
+    appRoot: root.getElementById ? root.getElementById('app') : root.querySelector('#app'),
+    screens: {
+      home: root.getElementById ? root.getElementById('homeScreen') : root.querySelector('#homeScreen'),
+      setup: root.getElementById ? root.getElementById('setupScreen') : root.querySelector('#setupScreen'),
+      game: root.getElementById ? root.getElementById('gameScreen') : root.querySelector('#gameScreen'),
+    },
+    modals: {
+      postGame: root.getElementById ? root.getElementById('postGameModal') : root.querySelector('#postGameModal'),
+    },
+    inputs: {
+      playerName: root.getElementById ? root.getElementById('playerName') : root.querySelector('#playerName'),
+    },
+    buttons: {
+      newGame: root.getElementById ? root.getElementById('newGameBtn') : root.querySelector('#newGameBtn'),
+      continue: root.getElementById ? root.getElementById('continueBtn') : root.querySelector('#continueBtn'),
+      startSolo: root.getElementById ? root.getElementById('startSoloBtn') : root.querySelector('#startSoloBtn'),
+      randomize: root.getElementById ? root.getElementById('randomizeBtn') : root.querySelector('#randomizeBtn'),
+      clearBoard: root.getElementById ? root.getElementById('clearBoardBtn') : root.querySelector('#clearBoardBtn'),
+      ready: root.getElementById ? root.getElementById('readyBtn') : root.querySelector('#readyBtn'),
+      backHome: root.getElementById ? root.getElementById('backToHomeBtn') : root.querySelector('#backToHomeBtn'),
+      fire: root.getElementById ? root.getElementById('fireBtn') : root.querySelector('#fireBtn'),
+      save: root.getElementById ? root.getElementById('saveBtn') : root.querySelector('#saveBtn'),
+      loadLocalSave: root.getElementById
+        ? root.getElementById('loadLocalSaveBtn')
+        : root.querySelector('#loadLocalSaveBtn'),
+      startDeployment: root.getElementById
+        ? root.getElementById('startDeploymentBtn')
+        : root.querySelector('#startDeploymentBtn'),
+      cancelCallsign: root.getElementById
+        ? root.getElementById('cancelCallsignBtn')
+        : root.querySelector('#cancelCallsignBtn'),
+      cancelMode: root.getElementById
+        ? root.getElementById('cancelModeBtn')
+        : root.querySelector('#cancelModeBtn'),
+      playAgain: root.getElementById ? root.getElementById('playAgainBtn') : root.querySelector('#playAgainBtn'),
+      returnHome: root.getElementById ? root.getElementById('returnHomeBtn') : root.querySelector('#returnHomeBtn'),
+      abortMission: root.getElementById
+        ? root.getElementById('abortMissionBtn')
+        : root.querySelector('#abortMissionBtn'),
+    },
+    lists: {
+      unit: root.getElementById ? root.getElementById('unitList') : root.querySelector('#unitList'),
+      players: root.getElementById ? root.getElementById('playerList') : root.querySelector('#playerList'),
+      localSaves: root.getElementById
+        ? root.getElementById('localSaveList')
+        : root.querySelector('#localSaveList'),
+    },
+    toggles: {
+      orientation: root.querySelectorAll ? root.querySelectorAll('[data-orientation]') : [],
+      difficulty: root.querySelectorAll ? root.querySelectorAll('#soloOptions .chip') : [],
+    },
+    boards: {
+      placement: root.getElementById ? root.getElementById('placementBoard') : root.querySelector('#placementBoard'),
+      player: root.getElementById ? root.getElementById('playerBoard') : root.querySelector('#playerBoard'),
+      attack: root.getElementById ? root.getElementById('attackBoard') : root.querySelector('#attackBoard'),
+    },
+    hud: {
+      statusFeed: root.getElementById ? root.getElementById('statusFeed') : root.querySelector('#statusFeed'),
+      turnBanner: root.getElementById ? root.getElementById('turnBanner') : root.querySelector('#turnBanner'),
+      homeStatus: root.getElementById ? root.getElementById('homeStatus') : root.querySelector('#homeStatus'),
+      postGameTitle: root.getElementById ? root.getElementById('postGameTitle') : root.querySelector('#postGameTitle'),
+      postGameMessage: root.getElementById
+        ? root.getElementById('postGameMessage')
+        : root.querySelector('#postGameMessage'),
+    },
+    panels: {
+      soloOptions: root.getElementById ? root.getElementById('soloOptions') : root.querySelector('#soloOptions'),
+      pvpOptions: root.getElementById ? root.getElementById('pvpOptions') : root.querySelector('#pvpOptions'),
+    },
+    header: {
+      menuToggle: root.getElementById ? root.getElementById('menuToggle') : root.querySelector('#menuToggle'),
+      menuDropdown: root.getElementById ? root.getElementById('menuDropdown') : root.querySelector('#menuDropdown'),
+      menuItems: root.querySelectorAll ? root.querySelectorAll('[data-menu-action]') : [],
+    },
+  };
+}
+
+function hasLocalStorage() {
+  return typeof window !== 'undefined' && Boolean(window.localStorage);
+}
+
+function readLocalSaves() {
+  if (!hasLocalStorage()) return {};
+  try {
+    const raw = window.localStorage.getItem(LOCAL_SAVE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (err) {
+    console.error('Failed to read local saves', err);
+    return {};
+  }
+}
+
+function updateLocalSaveSelection(entry) {
+  if (!elements?.lists?.localSaves) return;
+  const container = elements.lists.localSaves;
+  container.querySelectorAll('.save-entry').forEach((item) => {
+    item.classList.remove('selected');
+  });
+  if (!entry) {
+    selectedLocalSave = null;
+    return;
+  }
+  entry.classList.add('selected');
+  selectedLocalSave = entry.dataset.player || null;
+}
+
+function formatLocalSaveMeta(info) {
+  const timestamp = info?.savedAt ? new Date(info.savedAt) : null;
+  const dateLabel = timestamp
+    ? timestamp.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    : 'Unknown time';
+  const mode = info?.payload?.mode ? info.payload.mode.toUpperCase() : 'UNKNOWN';
+  return `${mode} · ${dateLabel}`;
+}
+
+function renderLocalSaveList() {
+  if (!elements?.lists?.localSaves) return;
+  const container = elements.lists.localSaves;
+  container.innerHTML = '';
+  if (!hasLocalStorage()) {
+    container.innerHTML = '<p class="empty-state">Local storage unavailable.</p>';
+    selectedLocalSave = null;
+    return;
+  }
+  const saves = readLocalSaves();
+  const entries = Object.entries(saves);
+  if (!entries.length) {
+    container.innerHTML = '<p class="empty-state">No local saves yet.</p>';
+    selectedLocalSave = null;
+    return;
+  }
+  entries
+    .sort(([, current], [, next]) => {
+      const currentTime = current?.savedAt ? new Date(current.savedAt).getTime() : 0;
+      const nextTime = next?.savedAt ? new Date(next.savedAt).getTime() : 0;
+      return nextTime - currentTime;
+    })
+    .forEach(([playerName, data]) => {
+      const entry = document.createElement('div');
+      entry.className = 'save-entry';
+      entry.dataset.player = playerName;
+      entry.tabIndex = 0;
+      entry.innerHTML = `<strong>${playerName}</strong><span>${formatLocalSaveMeta(data)}</span>`;
+      entry.addEventListener('click', () => updateLocalSaveSelection(entry));
+      entry.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          updateLocalSaveSelection(entry);
+        }
+      });
+      container.appendChild(entry);
+    });
+  const firstEntry = container.querySelector('.save-entry');
+  if (firstEntry) {
+    updateLocalSaveSelection(firstEntry);
+  }
+}
+
+function persistLocalSave(playerName, payload) {
+  if (!playerName || !payload || !hasLocalStorage()) return;
+  const saves = readLocalSaves();
+  saves[playerName] = {
+    payload,
+    savedAt: new Date().toISOString(),
+  };
+  window.localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify(saves));
+  renderLocalSaveList();
+}
+
+function handleLocalSaveLoad() {
+  if (!elements?.hud?.homeStatus) return;
+  if (!selectedLocalSave) {
+    elements.hud.homeStatus.textContent = 'Select a local save to resume.';
+    playTone(SOUNDS.ALERT, 200);
+    return;
+  }
+  const saves = readLocalSaves();
+  const entry = saves[selectedLocalSave];
+  if (!entry?.payload) {
+    elements.hud.homeStatus.textContent = 'Selected save is unavailable.';
+    playTone(SOUNDS.ALERT, 200);
+    return;
+  }
+  elements.inputs.playerName.value = selectedLocalSave;
+  state.playerName = selectedLocalSave;
+  state.continuePayload = entry.payload;
+  loadSavedGame(entry.payload);
+}
+
+
+function showCallsignPanel() {
+  slideActionAreaTrackTo(1);
+  const input = elements?.inputs?.playerName;
+  if (input) {
+    window.setTimeout(() => input.focus(), 500);
+  }
+}
+
+function hideCallsignPanel() {
+  slideActionAreaTrackTo(0);
+}
+
+function showModePanel() {
+  slideActionAreaTrackTo(2);
+}
+
+function hideModePanel() {
+  slideActionAreaTrackTo(0);
+}
+
+function slideActionAreaTrackTo(targetIndex = 0) {
+  const track = elements?.screens?.home?.querySelector('.action-area--track');
+  if (!track) return;
+  const panels = track.querySelectorAll('.action-area--panel');
+  const panelCount = panels.length || 1;
+  const clampedIndex = Math.min(Math.max(targetIndex, 0), panelCount - 1);
+  const share = 100 / panelCount;
+  panels.forEach((panel) => {
+    panel.style.flex = `0 0 ${share}%`;
+  });
+  track.style.width = `${panelCount * 100}%`;
+  track.style.transform = `translateX(${clampedIndex * -share}%)`;
+  track.dataset.activePanelIndex = `${clampedIndex}`;
+}
+
+function handleNewDeploymentStart() {
+  if (!elements?.inputs?.playerName) return false;
+  const value = elements.inputs.playerName.value.trim();
+  state.playerName = value;
+  if (!state.playerName) {
+    if (elements?.hud?.homeStatus) {
+      elements.hud.homeStatus.textContent = 'Enter callsign to proceed.';
+    }
+    playTone(SOUNDS.ALERT, 200);
+    return false;
+  }
+  if (elements?.hud?.homeStatus) {
+    elements.hud.homeStatus.textContent = '';
+  }
+  requestPlayerRegistration();
+  state.mode = null;
+  showModePanel();
+  toggleModal('mode', true);
+  return true;
+}
+
+function playTone() {
+  // Sound effects disabled.
 }
 
 function createEmptyBoard() {
   const cells = {};
-  ROWS.forEach((row) => {
-    COLUMNS.forEach((col) => {
-      const coord = `${row}${col}`;
+  COLUMNS.forEach((column) => {
+    ROWS.forEach((row) => {
+      const coord = `${row}${column}`;
       cells[coord] = { occupant: null, hit: false };
     });
   });
@@ -149,23 +488,29 @@ function indicesToCoordinate(rowIndex, columnIndex) {
   return `${ROWS[rowIndex]}${COLUMNS[columnIndex]}`;
 }
 
+function isSpaceFree(board, coordinate) {
+  const cell = board.cells[coordinate];
+  return Boolean(cell && !cell.occupant);
+}
+
 function canPlaceUnit(board, unit, startCoordinate, orientation) {
   const indices = coordinateToIndices(startCoordinate);
   if (!indices) return false;
   const coordinates = [];
   for (let offset = 0; offset < unit.size; offset += 1) {
-    const rowIndex = orientation === 'vertical' ? indices.rowIndex + offset : indices.rowIndex;
+    const rowIndex = orientation === 'horizontal' ? indices.rowIndex + offset : indices.rowIndex;
     const columnIndex =
-      orientation === 'horizontal' ? indices.columnIndex + offset : indices.columnIndex;
+      orientation === 'vertical' ? indices.columnIndex + offset : indices.columnIndex;
     const coord = indicesToCoordinate(rowIndex, columnIndex);
     if (!coord) return false;
-    if (board.cells[coord].occupant) return false;
+    if (!isSpaceFree(board, coord)) return false;
     coordinates.push(coord);
   }
   return coordinates;
 }
 
 function placeUnit(board, unit, coordinates) {
+  console.log(`Placing unit ${unit.name} at ${coordinates.join(', ')}`);
   board.units.push({
     name: unit.name,
     size: unit.size,
@@ -197,6 +542,7 @@ function resetPlacementBoard() {
   state.placedUnits = [];
   renderPlacementBoard();
   updateReadyButton();
+  renderUnitList();
 }
 
 function randomizePlacement() {
@@ -223,6 +569,7 @@ function randomizePlacement() {
   }
   renderPlacementBoard();
   updateReadyButton();
+  renderUnitList();
 }
 
 function getUnitAtCoordinate(board, coordinate) {
@@ -239,7 +586,7 @@ function getUnitOrientation(unit) {
   if (!firstIndices || !secondIndices) {
     return 'horizontal';
   }
-  return firstIndices.rowIndex === secondIndices.rowIndex ? 'horizontal' : 'vertical';
+  return firstIndices.columnIndex === secondIndices.columnIndex ? 'horizontal' : 'vertical';
 }
 
 function getUnitAnchorCoordinate(unit, orientation) {
@@ -250,18 +597,18 @@ function getUnitAnchorCoordinate(unit, orientation) {
     const coordIndices = coordinateToIndices(coord);
     if (!anchorIndices || !coordIndices) return anchor;
     if (orientation === 'horizontal') {
-      if (coordIndices.columnIndex < anchorIndices.columnIndex) {
+      if (coordIndices.rowIndex < anchorIndices.rowIndex) {
         return coord;
       }
-      if (coordIndices.columnIndex === anchorIndices.columnIndex && coordIndices.rowIndex < anchorIndices.rowIndex) {
+      if (coordIndices.rowIndex === anchorIndices.rowIndex && coordIndices.columnIndex < anchorIndices.columnIndex) {
         return coord;
       }
       return anchor;
     }
-    if (coordIndices.rowIndex < anchorIndices.rowIndex) {
+    if (coordIndices.columnIndex < anchorIndices.columnIndex) {
       return coord;
     }
-    if (coordIndices.rowIndex === anchorIndices.rowIndex && coordIndices.columnIndex < anchorIndices.columnIndex) {
+    if (coordIndices.columnIndex === anchorIndices.columnIndex && coordIndices.rowIndex < anchorIndices.rowIndex) {
       return coord;
     }
     return anchor;
@@ -301,9 +648,9 @@ function appendUnitImage(cellEl, unit, orientation) {
 function renderPlacementBoard() {
   const { placement } = elements.boards;
   placement.innerHTML = '';
-  ROWS.forEach((row) => {
-    COLUMNS.forEach((col) => {
-      const coord = `${row}${col}`;
+  COLUMNS.forEach((column) => {
+    ROWS.forEach((row) => {
+      const coord = `${row}${column}`;
       const cell = document.createElement('div');
       cell.className = 'cell';
       cell.dataset.coord = coord;
@@ -326,7 +673,6 @@ function renderPlacementBoard() {
           cell.setAttribute('aria-label', `Occupied sector ${coord}`);
         }
       } else {
-        cell.textContent = coord;
         cell.setAttribute('aria-label', `Empty sector ${coord}`);
       }
       placement.appendChild(cell);
@@ -338,11 +684,15 @@ function renderPlayerBoard() {
   if (!state.playerBoard) {
     state.playerBoard = createEmptyBoard();
   }
-  const { player } = elements.boards;
-  player.innerHTML = '';
-  ROWS.forEach((row) => {
-    COLUMNS.forEach((col) => {
-      const coord = `${row}${col}`;
+  const playerBoardEl = elements?.boards?.player;
+  if (!playerBoardEl) {
+    console.warn('Player board element missing when trying to render player board.');
+    return;
+  }
+  playerBoardEl.innerHTML = '';
+  COLUMNS.forEach((column) => {
+    ROWS.forEach((row) => {
+      const coord = `${row}${column}`;
       const cellEl = document.createElement('div');
       cellEl.className = 'cell';
       cellEl.dataset.coord = coord;
@@ -394,7 +744,7 @@ function renderPlayerBoard() {
       } else if (cell.hit) {
         cellEl.classList.add('miss');
       }
-      player.appendChild(cellEl);
+      playerBoardEl.appendChild(cellEl);
     });
   });
 }
@@ -402,13 +752,12 @@ function renderPlayerBoard() {
 function renderAttackBoard() {
   const { attack } = elements.boards;
   attack.innerHTML = '';
-  ROWS.forEach((row) => {
-    COLUMNS.forEach((col) => {
-      const coord = `${row}${col}`;
+  COLUMNS.forEach((column) => {
+    ROWS.forEach((row) => {
+      const coord = `${row}${column}`;
       const cellEl = document.createElement('div');
       cellEl.className = 'cell';
       cellEl.dataset.coord = coord;
-      cellEl.textContent = coord;
       const result = state.attackResults?.[coord];
       if (result === 'hit') {
         cellEl.classList.add('hit');
@@ -430,15 +779,56 @@ function renderUnitList() {
     const item = document.createElement('div');
     item.className = 'unit-item';
     item.dataset.unit = unit.name;
+    item.draggable = true;
     item.innerHTML = `
-      <span>${unit.name}</span>
-      <span class="unit-size">${unit.size} tiles</span>
+      <div class="unit-thumb-wrapper">
+        <img src="${UNIT_IMAGES[unit.name] || ''}" alt="${unit.name}" />
+      </div>
+      <div class="unit-meta">
+        <strong>${unit.name}</strong>
+        <span class="unit-size">${unit.size} tiles</span>
+      </div>
     `;
     if (state.selectedUnit?.name === unit.name) {
       item.classList.add('selected');
     }
+    if (state.placedUnits.some((placed) => placed.name === unit.name)) {
+      item.classList.add('placed');
+    }
     elements.lists.unit.appendChild(item);
   });
+  bindVehicleDragSources();
+}
+
+function attemptPlaceSelectedUnit(coordinate) {
+  if (state.setupLocked) return false;
+  if (!coordinate) return false;
+  if (state.placedUnits.length >= MAX_UNITS) {
+    pushStatus('Unit cap reached. Remove a unit before placing another.', 'warning');
+    return false;
+  }
+  const unit = state.selectedUnit;
+  if (!unit) {
+    pushStatus('Select a unit to deploy.', 'warning');
+    return false;
+  }
+  if (state.placedUnits.some((placed) => placed.name === unit.name)) {
+    pushStatus('Each unit profile may be deployed once.', 'warning');
+    playTone(SOUNDS.ALERT, 200);
+    return false;
+  }
+  const coordinates = canPlaceUnit(state.placementBoard, unit, coordinate, state.orientation);
+  if (!coordinates) {
+    pushStatus('Placement invalid. Check terrain boundaries.', 'danger');
+    playTone(SOUNDS.ALERT, 250);
+    return false;
+  }
+  placeUnit(state.placementBoard, unit, coordinates);
+  state.placedUnits.push({ ...unit, coordinates });
+  renderPlacementBoard();
+  updateReadyButton();
+  renderUnitList();
+  return true;
 }
 
 function switchScreen(next) {
@@ -460,6 +850,104 @@ function toggleModal(modalKey, visible) {
   const modal = elements.modals[modalKey];
   if (!modal) return;
   modal.classList.toggle('hidden', !visible);
+}
+function openMenu() {
+  if (menuOpen) return;
+  const toggle = elements?.header?.menuToggle;
+  const dropdown = elements?.header?.menuDropdown;
+  if (!toggle || !dropdown) return;
+  dropdown.classList.remove('hidden');
+  toggle.setAttribute('aria-expanded', 'true');
+  menuOpen = true;
+  document.addEventListener('click', handleMenuOutsideClick);
+  document.addEventListener('keydown', handleMenuKeydown);
+}
+
+function closeMenu() {
+  if (!menuOpen) return;
+  const toggle = elements?.header?.menuToggle;
+  const dropdown = elements?.header?.menuDropdown;
+  if (dropdown) {
+    dropdown.classList.add('hidden');
+  }
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', 'false');
+  }
+  menuOpen = false;
+  document.removeEventListener('click', handleMenuOutsideClick);
+  document.removeEventListener('keydown', handleMenuKeydown);
+}
+
+function toggleMenu() {
+  if (menuOpen) {
+    closeMenu();
+  } else {
+    openMenu();
+  }
+}
+
+function handleMenuOutsideClick(event) {
+  const container = elements?.header?.menuDropdown;
+  const toggle = elements?.header?.menuToggle;
+  if (!container || !menuOpen) return;
+  if (container.contains(event.target) || toggle?.contains(event.target)) {
+    return;
+  }
+  closeMenu();
+}
+
+function handleMenuKeydown(event) {
+  if (event.key === 'Escape') {
+    closeMenu();
+  }
+}
+
+function handleMenuAction(action) {
+  switch (action) {
+    case 'home':
+      switchScreen(MODES.HOME);
+      toggleModal('mode', false);
+      toggleModal('postGame', false);
+      break;
+    case 'save':
+      elements?.buttons?.save?.click();
+      break;
+    case 'abort':
+      if (state.mode === GAME_MODES.PVP && state.gameId) {
+        socket.emit('cancelMatch');
+      }
+      if (state.mode === GAME_MODES.SOLO && state.gameStarted) {
+        pushStatus('Mission aborted. Returning to command.', 'warning');
+      }
+      state.mode = null;
+      state.gameId = null;
+      state.gameStarted = false;
+      state.setupLocked = false;
+      state.dieComplete = false;
+      state.playerTurn = false;
+      state.currentTurnSocket = null;
+      state.attackSelection = null;
+      state.attackHistory = new Set();
+      state.attackResults = {};
+      state.opponentAttackHistory = new Set();
+      state.statusMessages = [];
+      state.playerBoard = createEmptyBoard();
+      state.aiBoard = createEmptyBoard();
+      state.aiShots = new Set();
+      renderStatusFeed();
+      renderPlayerBoard();
+      renderAttackBoard();
+      setTurnBanner('Awaiting orders...');
+      syncAttackInterface();
+
+      toggleModal('postGame', false);
+      toggleModal('mode', false);
+      switchScreen(MODES.HOME);
+      resetPlacementBoard();
+      break;
+    default:
+      break;
+  }
 }
 
 function updateReadyButton() {
@@ -487,7 +975,6 @@ function renderStatusFeed() {
     .map(
       (item) =>
         `<div class="status-item status-${item.context}">
-          <span>[${item.timestamp}]</span>
           <span> ${item.message}</span>
         </div>`,
     )
@@ -495,11 +982,10 @@ function renderStatusFeed() {
 }
 
 function setTurnBanner(message) {
+  if (!elements?.hud?.turnBanner) {
+    return;
+  }
   elements.hud.turnBanner.textContent = message;
-}
-
-function setDiceDisplay(value) {
-  elements.hud.diceDisplay.textContent = value;
 }
 
 function requestPlayerRegistration() {
@@ -543,6 +1029,7 @@ function showPostGameModal(title, message) {
 function setupSoloSession() {
   state.mode = GAME_MODES.SOLO;
   state.opponentName = 'CPU';
+  renderUnitList();
   resetPlacementBoard();
   state.aiBoard = createEmptyBoard();
   state.aiUnits = [];
@@ -550,19 +1037,14 @@ function setupSoloSession() {
   state.attackResults = {};
   state.opponentAttackHistory = new Set();
   state.aiShots = new Set();
-  state.playerRoll = null;
-  state.opponentRoll = null;
   state.dieComplete = false;
   state.playerTurn = false;
   state.gameStarted = false;
   state.statusMessages = [];
   renderStatusFeed();
-  setDiceDisplay('-');
   setTurnBanner('Deploy your forces');
-  elements.buttons.fire.classList.add('disabled');
-  elements.buttons.fire.disabled = true;
-  elements.buttons.rollDice.disabled = false;
-  elements.buttons.rollDice.classList.remove('disabled');
+  state.attackSelection = null;
+  syncAttackInterface();
   state.setupLocked = false;
   switchScreen(MODES.SETUP);
 }
@@ -589,9 +1071,32 @@ function populateAiBoard() {
 
 function enterGameScreen() {
   state.playerBoard = cloneBoard(state.placementBoard);
+  switchScreen(MODES.GAME);
   renderPlayerBoard();
   renderAttackBoard();
-  switchScreen(MODES.GAME);
+}
+
+function establishInitiative() {
+  const playerStarts = Math.random() < 0.5;
+  state.playerTurn = playerStarts;
+  const message = playerStarts
+    ? 'You have the initiative. Strike when ready.'
+    : 'Enemy forces seize the first shot.';
+  setTurnBanner(playerStarts ? 'Your turn!' : 'Opponent turn');
+  pushStatus(message, playerStarts ? 'success' : 'warning');
+  syncAttackInterface();
+  if (!playerStarts) {
+    window.setTimeout(aiTakeTurn, 1100);
+  }
+}
+
+function beginSoloCombat() {
+  state.gameStarted = true;
+  state.playerTurn = true;
+  state.dieComplete = true;
+  state.attackSelection = null;
+  establishInitiative();
+  syncAttackInterface();
 }
 
 function handleReadySolo() {
@@ -600,6 +1105,7 @@ function handleReadySolo() {
   state.setupLocked = true;
   pushStatus('Deployment locked. Awaiting command to begin.', 'info');
   enterGameScreen();
+  beginSoloCombat();
 }
 
 function handleReadyMultiplayer() {
@@ -615,86 +1121,17 @@ function handleReadyMultiplayer() {
 }
 
 function handleReady() {
+  if (state.placedUnits.length !== MAX_UNITS) {
+    pushStatus('Deploy every unit before locking in this deployment.', 'warning');
+    playTone(SOUNDS.ALERT, 200);
+    return;
+  }
+  if (state.setupLocked) return;
   playTone(SOUNDS.CLICK);
   if (state.mode === GAME_MODES.SOLO) {
     handleReadySolo();
   } else if (state.mode === GAME_MODES.PVP) {
     handleReadyMultiplayer();
-  }
-}
-
-function animateDiceRoll() {
-  return new Promise((resolve) => {
-    const iterations = 15;
-    let count = 0;
-    const interval = setInterval(() => {
-      const value = Math.floor(Math.random() * 20) + 1;
-      setDiceDisplay(value);
-      playTone(400 + value * 10, 30);
-      count += 1;
-      if (count >= iterations) {
-        clearInterval(interval);
-        resolve();
-      }
-    }, 60);
-  });
-}
-
-function startSoloDiceSequence() {
-  const rollPlayer = Math.floor(Math.random() * 20) + 1;
-  const rollAi = Math.floor(Math.random() * 20) + 1;
-  state.playerRoll = rollPlayer;
-  state.opponentRoll = rollAi;
-  setDiceDisplay(rollPlayer);
-  pushStatus(`You roll a ${rollPlayer}.`, 'info');
-  pushStatus(`Opponent rolls a ${rollAi}.`, 'info');
-  if (rollPlayer === rollAi) {
-    pushStatus('Tie detected. Roll again!', 'warning');
-    state.playerTurn = false;
-    setTurnBanner('Tied roll. Roll again!');
-    state.dieComplete = false;
-    return;
-  }
-  state.dieComplete = true;
-  state.gameStarted = true;
-  state.playerTurn = rollPlayer > rollAi;
-  const message = state.playerTurn ? 'You fire the first shot!' : 'Opponent gains initiative!';
-  pushStatus(message, state.playerTurn ? 'success' : 'warning');
-  setTurnBanner(state.playerTurn ? 'Your turn!' : `${state.opponentName || 'CPU'} turn`);
-  elements.buttons.fire.disabled = !state.playerTurn;
-  elements.buttons.fire.classList.toggle('disabled', !state.playerTurn);
-  if (!state.playerTurn) {
-    window.setTimeout(aiTakeTurn, 1100);
-  }
-}
-
-function handleSoloDiceRoll() {
-  animateDiceRoll().then(() => {
-    startSoloDiceSequence();
-  });
-}
-
-function handleMultiplayerDiceRoll() {
-  if (!state.gameId) return;
-  const rollValue = Math.floor(Math.random() * 20) + 1;
-  animateDiceRoll().then(() => {
-    socket.emit('dieRoll', { gameId: state.gameId, value: rollValue });
-    setDiceDisplay(rollValue);
-  });
-}
-
-function handleDiceRoll() {
-  if (state.setupLocked === false) {
-    pushStatus('Lock in your deployment first.', 'warning');
-    return;
-  }
-  playTone(SOUNDS.CLICK);
-  elements.buttons.rollDice.disabled = true;
-  elements.buttons.rollDice.classList.add('disabled');
-  if (state.mode === GAME_MODES.SOLO) {
-    handleSoloDiceRoll();
-  } else if (state.mode === GAME_MODES.PVP) {
-    handleMultiplayerDiceRoll();
   }
 }
 
@@ -725,33 +1162,46 @@ function handlePlayerAttack(coordinate) {
     pushStatus('Coordinate already targeted.', 'warning');
     return;
   }
-  state.attackHistory.add(coordinate);
-  const cellEl = elements.boards.attack.querySelector(`[data-coord="${coordinate}"]`);
-  if (cellEl) cellEl.classList.add('selected-target');
-  elements.buttons.fire.disabled = false;
-  elements.buttons.fire.classList.remove('disabled');
+  const attackBoard = elements?.boards?.attack;
+  const previousSelection = attackBoard?.querySelector('.cell.selected-target');
+  if (previousSelection) {
+    previousSelection.classList.remove('selected-target', 'occupied');
+  }
+  const cellEl = attackBoard?.querySelector(`[data-coord="${coordinate}"]`);
+  if (cellEl) {
+    cellEl.classList.add('selected-target', 'occupied');
+  }
   state.attackSelection = coordinate;
+  const fireButton = elements?.buttons?.fire;
+  if (fireButton) {
+    fireButton.disabled = false;
+    fireButton.classList.remove('disabled');
+  }
+  syncAttackInterface();
   setTurnBanner(`Target locked: ${coordinate}`);
 }
 
-function finalizePlayerAttack() {
+async function finalizePlayerAttack() {
   if (!state.attackSelection) return;
   const coordinate = state.attackSelection;
+  const fireButton = elements?.buttons?.fire;
+  if (fireButton) {
+    fireButton.disabled = true;
+    fireButton.classList.add('disabled');
+  }
+  state.attackHistory.add(coordinate);
+  await playSfx(SFX_PATHS.FIRE);
   if (state.mode === GAME_MODES.SOLO) {
     const result = resolveAttackAgainstBoard(state.aiBoard, coordinate);
     state.attackResults[coordinate] = result.hit ? 'hit' : 'miss';
+    await playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
     const cellEl = elements.boards.attack.querySelector(`[data-coord="${coordinate}"]`);
     if (cellEl) {
-      cellEl.classList.remove('selected-target');
-      if (result.hit) {
-        cellEl.classList.add('hit');
-      } else {
-        cellEl.classList.add('miss');
-      }
+      cellEl.classList.remove('selected-target', 'occupied');
+      cellEl.classList.add(result.hit ? 'hit' : 'miss');
     }
     state.attackSelection = null;
     if (result.hit) {
-      playTone(SOUNDS.HIT, 300);
       pushStatus(`Direct hit at ${coordinate}!`, 'success');
       if (result.destroyed) {
         pushStatus(`Enemy ${result.destroyed} destroyed!`, 'success');
@@ -759,16 +1209,16 @@ function finalizePlayerAttack() {
       if (result.victory) {
         pushStatus('All hostiles neutralized!', 'success');
         setTurnBanner('Victory!');
+        state.playerTurn = false;
+        syncAttackInterface();
         showPostGameModal('Mission Success', 'You have secured the battlefield.');
         return;
       }
     } else {
-      playTone(SOUNDS.MISS, 200);
       pushStatus(`Attack unsuccessful at ${coordinate}.`, 'info');
     }
-    elements.buttons.fire.disabled = true;
-    elements.buttons.fire.classList.add('disabled');
     state.playerTurn = false;
+    syncAttackInterface();
     setTurnBanner('Opponent turn...');
     window.setTimeout(aiTakeTurn, 1000);
   } else if (state.mode === GAME_MODES.PVP) {
@@ -777,10 +1227,11 @@ function finalizePlayerAttack() {
     state.attackResults[coordinate] = 'pending';
     state.attackSelection = null;
     const cellEl = elements.boards.attack.querySelector(`[data-coord="${coordinate}"]`);
-    if (cellEl) cellEl.classList.remove('selected-target');
+    if (cellEl) {
+      cellEl.classList.remove('selected-target', 'occupied');
+    }
     setTurnBanner('Transmitting strike data...');
-    elements.buttons.fire.disabled = true;
-    elements.buttons.fire.classList.add('disabled');
+    syncAttackInterface();
   }
 }
 
@@ -816,7 +1267,7 @@ function aiChooseCoordinate() {
   return available[Math.floor(Math.random() * available.length)];
 }
 
-function aiTakeTurn() {
+async function aiTakeTurn() {
   if (state.mode !== GAME_MODES.SOLO || state.playerTurn) return;
   const coordinate = aiChooseCoordinate();
   if (!coordinate) return;
@@ -824,9 +1275,9 @@ function aiTakeTurn() {
   const result = resolveAttackAgainstBoard(state.playerBoard, coordinate);
   state.opponentAttackHistory.add(coordinate);
   pushStatus(`Incoming strike at ${coordinate}!`, 'warning');
+  await playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
   renderPlayerBoard();
   if (result.hit) {
-    playTone(SOUNDS.HIT, 280);
     pushStatus('Enemy artillery reports a hit!', 'danger');
     if (result.destroyed) {
       pushStatus(`Your ${result.destroyed} has been destroyed!`, 'danger');
@@ -837,55 +1288,80 @@ function aiTakeTurn() {
       return;
     }
   } else {
-    playTone(SOUNDS.MISS, 180);
     pushStatus('Enemy attack unsuccessful!', 'success');
   }
   state.playerTurn = true;
   setTurnBanner('Your turn!');
-  elements.buttons.fire.disabled = true;
-  elements.buttons.fire.classList.add('disabled');
+  state.attackSelection = null;
+  syncAttackInterface();
 }
 
 function setupEventListeners() {
-  elements.buttons.newGame.addEventListener('click', () => {
-    state.playerName = elements.inputs.playerName.value.trim();
-    if (!state.playerName) {
-      elements.hud.homeStatus.textContent = 'Enter callsign to proceed.';
-      playTone(SOUNDS.ALERT, 200);
-      return;
-    }
-    elements.hud.homeStatus.textContent = '';
-    requestPlayerRegistration();
-    state.mode = null;
-    toggleModal('mode', true);
-  });
+  if (elements?.buttons?.newGame) {
+    elements.buttons.newGame.addEventListener('click', () => {
+      showCallsignPanel();
+    });
+  }
 
-  elements.buttons.continue.addEventListener('click', () => {
-    state.playerName = elements.inputs.playerName.value.trim();
-    if (!state.playerName) {
-      elements.hud.homeStatus.textContent = 'Enter callsign to continue.';
-      playTone(SOUNDS.ALERT, 200);
-      return;
-    }
-    fetch(`/api/saves/${encodeURIComponent(state.playerName)}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data) {
-          elements.hud.homeStatus.textContent = 'No saved operations found.';
-          playTone(SOUNDS.ALERT, 200);
-          return;
-        }
-        state.continuePayload = data;
-        loadSavedGame(data);
-      })
-      .catch(() => {
-        elements.hud.homeStatus.textContent = 'Unable to retrieve save data.';
-      });
-  });
+  if (elements?.buttons?.startDeployment) {
+    elements.buttons.startDeployment.addEventListener('click', (event) => {
+      event.preventDefault();
+      handleNewDeploymentStart();
+    });
+  }
 
-  elements.buttons.closeModal.addEventListener('click', () => {
-    toggleModal('mode', false);
-  });
+  if (elements?.inputs?.playerName && elements?.buttons?.startDeployment) {
+    elements.inputs.playerName.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        elements.buttons.startDeployment.click();
+      }
+    });
+  }
+
+  if (elements?.buttons?.cancelCallsign) {
+    elements.buttons.cancelCallsign.addEventListener('click', () => {
+      hideCallsignPanel();
+    });
+  }
+
+  if (elements?.buttons?.cancelMode) {
+    elements.buttons.cancelMode.addEventListener('click', () => {
+      showCallsignPanel();
+    });
+  }
+
+  if (elements?.buttons?.continue) {
+    elements.buttons.continue.addEventListener('click', () => {
+      state.playerName = elements.inputs.playerName.value.trim();
+      if (!state.playerName) {
+        elements.hud.homeStatus.textContent = 'Enter callsign to continue.';
+        playTone(SOUNDS.ALERT, 200);
+        return;
+      }
+      fetch(`/api/saves/${encodeURIComponent(state.playerName)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data) {
+            elements.hud.homeStatus.textContent = 'No saved operations found.';
+            playTone(SOUNDS.ALERT, 200);
+            return;
+          }
+          state.continuePayload = data;
+          loadSavedGame(data);
+        })
+        .catch(() => {
+          elements.hud.homeStatus.textContent = 'Unable to retrieve save data.';
+        });
+    });
+  }
+
+  if (elements.buttons.loadLocalSave) {
+    elements.buttons.loadLocalSave.addEventListener('click', () => {
+      handleLocalSaveLoad();
+    });
+  }
+
 
   document.querySelectorAll('.mode-card').forEach((card) => {
     card.addEventListener('click', () => {
@@ -924,293 +1400,230 @@ function setupEventListeners() {
     setupSoloSession();
   });
 
-  elements.buttons.refreshPlayers.addEventListener('click', () => {
-    socket.emit('requestPlayerList');
-  });
+  if (elements?.buttons?.randomize) {
+    elements.buttons.randomize.addEventListener('click', () => {
+      playTone(SOUNDS.CLICK);
+      randomizePlacement();
+    });
+  }
 
-  elements.buttons.randomize.addEventListener('click', () => {
-    playTone(SOUNDS.CLICK);
-    randomizePlacement();
-  });
+  if (elements?.buttons?.clearBoard) {
+    elements.buttons.clearBoard.addEventListener('click', () => {
+      playTone(SOUNDS.CLICK);
+      resetPlacementBoard();
+    });
+  }
 
-  elements.buttons.clearBoard.addEventListener('click', () => {
-    playTone(SOUNDS.CLICK);
-    resetPlacementBoard();
-  });
+  if (elements?.buttons?.ready) {
+    elements.buttons.ready.addEventListener('click', () => {
+      if (elements.buttons.ready.disabled) return;
+      handleReady();
+    });
+  }
 
-  elements.buttons.ready.addEventListener('click', handleReady);
 
-  elements.buttons.backHome.addEventListener('click', () => {
-    playTone(SOUNDS.CLICK);
-    toggleModal('mode', false);
-    switchScreen(MODES.HOME);
-  });
-
-  elements.buttons.rollDice.addEventListener('click', handleDiceRoll);
-
-  elements.buttons.fire.addEventListener('click', finalizePlayerAttack);
-
-  elements.buttons.save.addEventListener('click', () => {
-    if (!state.gameStarted) {
-      pushStatus('Begin the mission before saving.', 'warning');
-      return;
-    }
-    if (!state.playerName) return;
-    state.awaitingSave = true;
-    const payload =
-      state.mode === GAME_MODES.SOLO
-        ? {
-          mode: 'solo',
-          difficulty: state.difficulty,
-          player: {
-            board: state.playerBoard,
-            turn: state.playerTurn,
-            roll: state.playerRoll,
-            attackHistory: [...state.attackHistory],
-          },
-          ai: {
-            board: state.aiBoard,
-            shots: [...state.aiShots],
-            roll: state.opponentRoll,
-          },
-          status: state.statusMessages,
-        }
-        : {
-          mode: 'pvp',
-          gameId: state.gameId,
-        };
-    fetch(`/api/saves/${encodeURIComponent(state.playerName)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-      .then((res) => res.json())
-      .then(() => {
-        pushStatus('Mission state stored successfully.', 'success');
-        state.awaitingSave = false;
-      })
-      .catch(() => {
-        pushStatus('Failed to save mission.', 'danger');
-        state.awaitingSave = false;
-      });
-  });
-
-  elements.buttons.playAgain.addEventListener('click', () => {
-    toggleModal('postGame', false);
-    if (state.mode === GAME_MODES.SOLO) {
-      setupSoloSession();
-    } else {
+  if (elements.buttons.backHome) {
+    elements.buttons.backHome.addEventListener('click', () => {
+      playTone(SOUNDS.CLICK);
+      toggleModal('mode', false);
       switchScreen(MODES.HOME);
-    }
-  });
+    });
+  }
 
-  elements.buttons.returnHome.addEventListener('click', () => {
-    toggleModal('postGame', false);
-    switchScreen(MODES.HOME);
-  });
+  if (elements.header.menuToggle) {
+    elements.header.menuToggle.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleMenu();
+    });
+  }
 
-  elements.boards.placement.addEventListener('click', (event) => {
-    if (state.setupLocked) return;
-    const cell = event.target.closest('.cell');
-    if (!cell) return;
-    const coordinate = cell.dataset.coord;
-    if (!coordinate) return;
-    const occupant = state.placementBoard.cells[coordinate].occupant;
-    if (occupant) {
-      removeUnitAtCoordinate(state.placementBoard, coordinate);
-      state.placedUnits = state.placedUnits.filter((unit) => unit.name !== occupant);
-      renderPlacementBoard();
-      updateReadyButton();
-      return;
-    }
-    if (state.placedUnits.length >= MAX_UNITS) {
-      pushStatus('Unit cap reached. Remove a unit before placing another.', 'warning');
-      return;
-    }
-    const unit = AVAILABLE_UNITS.find((item) => item.name === state.selectedUnit?.name);
-    if (!unit) {
-      pushStatus('Select a unit to deploy.', 'warning');
-      return;
-    }
-    if (state.placedUnits.some((placed) => placed.name === unit.name)) {
-      pushStatus('Each unit profile may be deployed once.', 'warning');
-      playTone(SOUNDS.ALERT, 200);
-      return;
-    }
-    const coordinates = canPlaceUnit(state.placementBoard, unit, coordinate, state.orientation);
-    if (!coordinates) {
-      pushStatus('Placement invalid. Check terrain boundaries.', 'danger');
-      playTone(SOUNDS.ALERT, 250);
-      return;
-    }
-    placeUnit(state.placementBoard, unit, coordinates);
-    state.placedUnits.push({ ...unit, coordinates });
-    renderPlacementBoard();
-    updateReadyButton();
-  });
+  if (elements.header.menuItems && typeof elements.header.menuItems.forEach === 'function') {
+    elements.header.menuItems.forEach((item) => {
+      item.addEventListener('click', (event) => {
+        event.preventDefault();
+        const action = event.currentTarget.dataset.menuAction;
+        closeMenu();
+        if (action) {
+          handleMenuAction(action);
+        }
+      });
+    });
+  }
 
-  elements.lists.unit.addEventListener('click', (event) => {
-    const item = event.target.closest('.unit-item');
-    if (!item) return;
-    const unitName = item.dataset.unit;
-    state.selectedUnit = AVAILABLE_UNITS.find((unit) => unit.name === unitName);
-    renderUnitList();
-    playTone(SOUNDS.CLICK);
-  });
+  if (elements?.boards?.attack) {
+    elements.boards.attack.addEventListener('click', (event) => {
+      const cell = event.target.closest ? event.target.closest('.cell') : null;
+      const coordinate = cell?.dataset?.coord;
+      if (!coordinate) return;
+      handlePlayerAttack(coordinate);
+    });
+  }
 
-  elements.boards.attack.addEventListener('click', (event) => {
-    const cell = event.target.closest('.cell');
-    if (!cell) return;
-    const coordinate = cell.dataset.coord;
-    if (!coordinate) return;
-    handlePlayerAttack(coordinate);
-  });
+  if (elements?.buttons?.fire) {
+    elements.buttons.fire.addEventListener('click', () => {
+      if (elements.buttons.fire.disabled) return;
+      void finalizePlayerAttack().catch((error) => {
+        console.error('Failed to finalize attack', error);
+      });
+    });
+  }
+
+  bindPlacementDragHandlers();
 }
 
-function initializeSocketEvents() {
-  socket.on('playerRegistered', ({ socketId }) => {
-    state.socketId = socketId;
-  });
+// function initializeSocketEvents() {
+// Temporarily disable socket glue until the UI catches up to this flow.
+// return;
 
-  socket.on('playerList', (players) => {
-    if (state.mode !== GAME_MODES.PVP) return;
-    showPlayersList(players);
-  });
+/*
+socket.on('playerRegistered', ({ socketId }) => {
+  state.socketId = socketId;
+});
 
-  socket.on('matchStarted', ({ gameId, opponentName }) => {
-    toggleModal('mode', false);
-    state.mode = GAME_MODES.PVP;
-    resetPlacementBoard();
-    state.gameId = gameId;
-    state.opponentName = opponentName;
-    state.attackHistory = new Set();
-    state.attackResults = {};
-    state.opponentAttackHistory = new Set();
-    state.statusMessages = [];
-    renderStatusFeed();
-    setDiceDisplay('-');
-    setTurnBanner('Deploy your forces');
-    elements.buttons.fire.disabled = true;
-    elements.buttons.fire.classList.add('disabled');
-    elements.buttons.rollDice.disabled = false;
-    elements.buttons.rollDice.classList.remove('disabled');
-    state.setupLocked = false;
-    switchScreen(MODES.SETUP);
-    socket.emit('joinGameRoom', { gameId });
-  });
+socket.on('playerList', (players) => {
+  if (state.mode !== GAME_MODES.PVP) return;
+  showPlayersList(players);
+});
 
-  socket.on('playerReady', ({ socketId }) => {
-    if (socketId !== state.socketId) {
-      pushStatus(`${state.opponentName || 'Opponent'} ready for battle.`, 'info');
-    }
-  });
+// socket.on('matchStarted', ({ gameId, opponentName }) => {
+//   toggleModal('mode', false);
+//   state.mode = GAME_MODES.PVP;
+//   resetPlacementBoard();
+//   state.gameId = gameId;
+//   state.opponentName = opponentName;
+//   state.attackHistory = new Set();
+//   state.attackResults = {};
+//   state.opponentAttackHistory = new Set();
+//   state.statusMessages = [];
+//   renderStatusFeed();
+//   setTurnBanner('Deploy your forces');
+//   state.attackSelection = null;
+//   syncAttackInterface();
+//   /* Dice controls paused for now.
+//   state.setupLocked = false;
+//   switchScreen(MODES.SETUP);
+//   socket.emit('joinGameRoom', { gameId });
+// });
 
-  socket.on('setupComplete', () => {
-    pushStatus('Both forces deployed. Roll to determine initiative.', 'info');
-    state.setupLocked = true;
-    enterGameScreen();
-  });
+socket.on('playerReady', ({ socketId }) => {
+  if (socketId !== state.socketId) {
+    pushStatus(`${state.opponentName || 'Opponent'} ready for battle.`, 'info');
+  }
+});
 
-  socket.on('diceTie', () => {
-    pushStatus('Both operators rolled the same value. Roll again.', 'warning');
-    elements.buttons.rollDice.disabled = false;
-    elements.buttons.rollDice.classList.remove('disabled');
-  });
+socket.on('setupComplete', () => {
+  pushStatus('Both forces deployed. Roll to determine initiative.', 'info');
+  state.setupLocked = true;
+  enterGameScreen();
+});
 
-  socket.on('turnStart', ({ currentTurn, order }) => {
-    state.currentTurnSocket = currentTurn;
-    state.playerTurn = currentTurn === state.socketId;
-    state.gameStarted = true;
-    state.dieComplete = true;
-    const playerIndex = order.indexOf(state.socketId);
-    if (playerIndex !== -1) {
-      pushStatus(
-        state.playerTurn ? 'Strike sequence authorized.' : 'Hold position; awaiting opponent.',
-        state.playerTurn ? 'success' : 'info',
-      );
-    }
-    setTurnBanner(state.playerTurn ? 'Your turn!' : `${state.opponentName} turn`);
-    elements.buttons.fire.disabled = !state.playerTurn;
-    elements.buttons.fire.classList.toggle('disabled', !state.playerTurn);
-  });
+/* Dice roll handshake disabled for now.
+socket.on('diceTie', () => {
+  pushStatus('Both operators rolled the same value. Roll again.', 'warning');
+});
+*/
 
-  socket.on('attackResult', ({ attacker, coordinate, result }) => {
+socket.on('turnStart', ({ currentTurn, order }) => {
+  state.currentTurnSocket = currentTurn;
+  state.playerTurn = currentTurn === state.socketId;
+  state.gameStarted = true;
+  state.dieComplete = true;
+  const playerIndex = order.indexOf(state.socketId);
+  if (playerIndex !== -1) {
+    pushStatus(
+      state.playerTurn ? 'Strike sequence authorized.' : 'Hold position; awaiting opponent.',
+      state.playerTurn ? 'success' : 'info',
+    );
+  }
+  setTurnBanner(state.playerTurn ? 'Your turn!' : `${state.opponentName} turn`);
+  state.attackSelection = null;
+  syncAttackInterface();
+});
+
+socket.on('attackResult', async ({ attacker, coordinate, result }) => {
+  const soundPath = result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS;
+  try {
     if (attacker === state.socketId) {
       state.attackResults[coordinate] = result.hit ? 'hit' : 'miss';
+      state.attackHistory.add(coordinate);
+      await playSfx(soundPath);
       const cellEl = elements.boards.attack.querySelector(`[data-coord="${coordinate}"]`);
       if (cellEl) {
         cellEl.classList.remove('selected-target');
-        if (result.hit) {
-          cellEl.classList.add('hit');
-        } else {
-          cellEl.classList.add('miss');
-        }
+        cellEl.classList.add(result.hit ? 'hit' : 'miss');
       }
-      state.attackHistory.add(coordinate);
       if (result.hit) {
-        playTone(SOUNDS.HIT, 280);
         pushStatus(`Direct hit at ${coordinate}!`, 'success');
         if (result.destroyedUnit) {
           pushStatus(`Enemy ${result.destroyedUnit} destroyed!`, 'success');
         }
       } else {
-        playTone(SOUNDS.MISS, 200);
         pushStatus('Attack unsuccessful!', 'info');
       }
     } else {
       state.opponentAttackHistory.add(coordinate);
       const resultBoard = resolveAttackAgainstBoard(state.playerBoard, coordinate);
+      await playSfx(soundPath);
       renderPlayerBoard();
       if (resultBoard.hit) {
-        playTone(SOUNDS.HIT, 280);
         pushStatus(`Our ${resultBoard.destroyed || 'unit'} was hit at ${coordinate}!`, 'danger');
         if (resultBoard.destroyed) {
           pushStatus(`Your ${resultBoard.destroyed} has been destroyed!`, 'danger');
         }
       } else {
-        playTone(SOUNDS.MISS, 200);
         pushStatus('Enemy attack unsuccessful!', 'success');
       }
     }
-  });
+  } catch (error) {
+    console.error('Failed to play attack result SFX', error);
+  }
+});
 
-  socket.on('gameOver', ({ winner, winnerName }) => {
-    state.gameStarted = false;
-    const victory = winner === state.socketId;
-    setTurnBanner(victory ? 'Victory!' : 'Defeat.');
-    showPostGameModal(
-      victory ? 'Mission Success' : 'Mission Failed',
-      victory
-        ? `You have neutralized ${state.opponentName || 'the opponent'}.`
-        : `${winnerName || 'Opponent'} secured the battlefield.`,
-    );
-  });
+socket.on('gameOver', ({ winner, winnerName }) => {
+  state.gameStarted = false;
+  const victory = winner === state.socketId;
+  setTurnBanner(victory ? 'Victory!' : 'Defeat.');
+  state.playerTurn = false;
+  state.attackSelection = null;
+  syncAttackInterface();
+  showPostGameModal(
+    victory ? 'Mission Success' : 'Mission Failed',
+    victory
+      ? `You have neutralized ${state.opponentName || 'the opponent'}.`
+      : `${winnerName || 'Opponent'} secured the battlefield.`,
+  );
+});
 
-  socket.on('gameState', (payload) => {
-    if (payload.currentTurn) {
-      state.currentTurnSocket = payload.currentTurn;
-      state.playerTurn = payload.currentTurn === state.socketId;
-      setTurnBanner(state.playerTurn ? 'Your turn!' : `${state.opponentName} turn`);
-    }
-  });
+socket.on('gameState', (payload) => {
+  if (payload.currentTurn) {
+    state.currentTurnSocket = payload.currentTurn;
+    state.playerTurn = payload.currentTurn === state.socketId;
+    setTurnBanner(state.playerTurn ? 'Your turn!' : `${state.opponentName} turn`);
+    state.attackSelection = null;
+    syncAttackInterface();
+  }
+});
 
-  socket.on('saved', () => {
-    if (state.awaitingSave) {
-      pushStatus('Mission state stored successfully.', 'success');
-      state.awaitingSave = false;
-    }
-  });
+socket.on('saved', () => {
+  if (state.awaitingSave) {
+    pushStatus('Mission state stored successfully.', 'success');
+    state.awaitingSave = false;
+  }
+});
 
-  socket.on('matchError', ({ message }) => {
-    pushStatus(message || 'Command error encountered.', 'danger');
-  });
+socket.on('matchError', ({ message }) => {
+  pushStatus(message || 'Command error encountered.', 'danger');
+});
 
-  socket.on('opponentLeft', () => {
-    pushStatus('Opponent disconnected. Mission aborted.', 'warning');
-    setTurnBanner('Opponent disconnected');
-    showPostGameModal('Mission Interrupted', 'Opponent left the battlefield.');
-  });
-}
+socket.on('opponentLeft', () => {
+  pushStatus('Opponent disconnected. Mission aborted.', 'warning');
+  setTurnBanner('Opponent disconnected');
+  state.playerTurn = false;
+  state.attackSelection = null;
+  syncAttackInterface();
+  showPostGameModal('Mission Interrupted', 'Opponent left the battlefield.');
+});
 
 function loadSavedGame(data) {
   if (data.mode === 'solo') {
@@ -1219,8 +1632,6 @@ function loadSavedGame(data) {
     state.playerBoard = data.player.board;
     state.aiBoard = data.ai.board;
     state.playerTurn = data.player.turn;
-    state.playerRoll = data.player.roll;
-    state.opponentRoll = data.ai.roll;
     state.attackHistory = new Set(data.player.attackHistory || []);
     state.attackResults = {};
     state.attackHistory.forEach((coord) => {
@@ -1241,29 +1652,32 @@ function loadSavedGame(data) {
     renderPlayerBoard();
     renderAttackBoard();
     renderStatusFeed();
-    setDiceDisplay(state.playerRoll || '-');
     setTurnBanner(state.playerTurn ? 'Your turn!' : 'Opponent turn');
-    elements.buttons.fire.disabled = !state.playerTurn;
-    elements.buttons.fire.classList.toggle('disabled', !state.playerTurn);
-    elements.buttons.rollDice.disabled = true;
-    elements.buttons.rollDice.classList.add('disabled');
+    state.attackSelection = null;
+    syncAttackInterface();
     switchScreen(MODES.GAME);
   } else if (data.mode === 'pvp') {
     pushStatus('Reconnect to multiplayer session via Tactical Link.', 'info');
   }
 }
 
-function initializeApp() {
+export function initializeApp(root = document) {
+  if (elements) {
+    return;
+  }
+  const scope = root instanceof Document ? root : document;
+  elements = collectElements(scope);
   renderPlacementBoard();
   renderUnitList();
-  renderPlayerBoard();
-  renderAttackBoard();
-  renderStatusFeed();
   updateReadyButton();
-  elements.buttons.fire.disabled = true;
-  elements.buttons.fire.classList.add('disabled');
+
+  state.attackSelection = null;
+  syncAttackInterface();
   setupEventListeners();
-  initializeSocketEvents();
+  slideActionAreaTrackTo(0);
 }
 
-initializeApp();
+if (typeof window !== 'undefined') {
+  window.GridOps = window.GridOps || {};
+  window.GridOps.initializeApp = initializeApp;
+}

@@ -6,146 +6,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GridOps</title>
   <link rel="stylesheet" href="/styles.css" />
+
+
 </head>
 
 <body>
-  <div id="app" class="app">
-    <div class="crt-overlay"></div>
-    <header class="app-header">
-      <img class="logo" src="/assets/img/gridops_logo_v.png" alt="">
-      <p class="tagline">GRIDOPS TACTICAL STRIKE SIMULATOR</p>
-    </header>
-
-    <main class="screens">
-      <section id="homeScreen" class="screen active">
-        <div class="panel">
-          <label for="playerName" class="label">OPERATOR NAME</label>
-          <input id="playerName" class="input-field" maxlength="20" placeholder="CALLSIGN" />
-        </div>
-        <div class="button-row">
-          <button id="newGameBtn" class="primary">NEW DEPLOYMENT</button>
-          <button id="continueBtn" class="secondary">CONTINUE OPS</button>
-        </div>
-        <div class="status-line" id="homeStatus"></div>
-      </section>
-
-      <section id="modeModal" class="modal hidden">
-        <div class="modal-content">
-          <h2>SELECT ENGAGEMENT MODE</h2>
-          <div class="modal-body">
-            <div class="mode-card" data-mode="solo">
-              <h3>SOLO SIM</h3>
-              <p>Practice against computer-controlled opposition.</p>
-            </div>
-            <div class="mode-card" data-mode="pvp">
-              <h3>TACTICAL LINK</h3>
-              <p>Link up with another operator over the GridOps network.</p>
-            </div>
-          </div>
-          <div id="soloOptions" class="secondary-panel hidden">
-            <h4>AI ALERTNESS</h4>
-            <div class="button-row">
-              <button data-difficulty="low" class="chip selected">LOW</button>
-              <button data-difficulty="medium" class="chip">MEDIUM</button>
-              <button data-difficulty="hard" class="chip">HIGH</button>
-            </div>
-            <button id="startSoloBtn" class="primary">INITIATE SOLO OP</button>
-          </div>
-          <div id="pvpOptions" class="secondary-panel hidden">
-            <h4>AVAILABLE OPERATORS</h4>
-            <ul id="playerList" class="player-list"></ul>
-            <button id="refreshPlayersBtn" class="secondary">REFRESH</button>
-          </div>
-          <button id="closeModalBtn" class="link">Abort</button>
-        </div>
-      </section>
-
-      <section id="setupScreen" class="screen hidden">
-        <div class="setup-grid">
-          <div class="panel">
-            <h2>DEPLOY FORCES</h2>
-            <p class="panel-sub">SELECT FIVE UNITS FOR THIS OPERATION</p>
-            <div id="unitList" class="unit-list"></div>
-            <div class="orientation-toggle">
-              <span>ORIENTATION</span>
-              <div class="button-row">
-                <button data-orientation="horizontal" class="chip selected">HORIZONTAL</button>
-                <button data-orientation="vertical" class="chip">VERTICAL</button>
-              </div>
-            </div>
-            <div class="button-row">
-              <button id="randomizeBtn" class="secondary">RANDOM LAYOUT</button>
-              <button id="clearBoardBtn" class="secondary">CLEAR BOARD</button>
-            </div>
-            <button id="readyBtn" class="primary disabled">READY</button>
-          </div>
-          <div class="panel board-panel">
-            <h2>TACTICAL MAP</h2>
-            <div id="placementBoard" class="grid board"></div>
-          </div>
-        </div>
-        <button id="backToHomeBtn" class="link">Return to Command</button>
-      </section>
-
-      <section id="gameScreen" class="screen hidden">
-        <div class="game-layout">
-          <aside class="hud">
-            <div class="hud-card">
-              <h3>STATUS</h3>
-              <div id="statusFeed" class="status-feed"></div>
-            </div>
-            <div class="hud-card">
-              <h3>D20 ROLL</h3>
-              <div class="dice-area">
-                <div id="diceDisplay" class="dice">-</div>
-                <button id="rollDiceBtn" class="secondary">ROLL</button>
-              </div>
-            </div>
-            <div class="hud-card">
-              <h3>SAVE OPS</h3>
-              <button id="saveBtn" class="secondary">SAVE MISSION</button>
-            </div>
-          </aside>
-          <div class="battlefield">
-            <div class="battlefield-map">
-              <div class="map-overlay">
-                <div class="map-label">
-                  <h2>TACTICAL MAP</h2>
-                </div>
-                <div class="primary-grid-wrap">
-                  <div id="playerBoard" class="grid board board-primary"></div>
-                </div>
-                <div class="attack-overlay">
-                  <div class="attack-card">
-                    <div class="attack-header">
-                      <h3>ATTACK MAP</h3>
-                    </div>
-                    <div id="attackBoard" class="grid board attack-board interactive"></div>
-                    <button id="fireBtn" class="primary disabled attack-fire">FIRE!</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="turn-banner" id="turnBanner">Awaiting orders...</div>
-      </section>
-
-      <section id="postGameModal" class="modal hidden">
-        <div class="modal-content">
-          <h2 id="postGameTitle">MISSION COMPLETE</h2>
-          <p id="postGameMessage"></p>
-          <div class="button-row">
-            <button id="playAgainBtn" class="primary">Play Again</button>
-            <button id="returnHomeBtn" class="secondary">Main Screen</button>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
+  <div id="root"></div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script type="module" src="/js/app.js"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+  <script type="text/babel" data-presets="env,react" src="/js/react-root.jsx"></script>
 </body>
 
 </html>
