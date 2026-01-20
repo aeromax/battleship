@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GridOps Sprite Tester</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 3rem;
+      background: #05060a;
+      color: #fff;
+      font-family: "Tech Mono", "Courier New", monospace;
+    }
+
+    .sprite-grid {
+      width: 180px;
+      height: 180px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      display: grid;
+      place-items: center;
+      position: relative;
+      background: rgba(0, 0, 0, 0.4);
+    }
+
+    .sprite-grid span {
+      position: absolute;
+      bottom: 8px;
+      font-size: 0.8rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .cell {
+      width: 90px;
+      height: 90px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.4);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="sprite-grid">
+    <div id="hit-sprite" class="cell hit"></div>
+    <span>Hit (7 frames)</span>
+  </div>
+  <div class="sprite-grid">
+    <div id="miss-sprite" class="cell miss"></div>
+    <span>Miss (7 frames)</span>
+  </div>
+  <!-- <script>
+    const hitCell = document.getElementById('hit-sprite');
+    const missCell = document.getElementById('miss-sprite');
+    const retrigger = (el) => {
+      if (!el) return;
+      el.classList.remove('hit', 'miss');
+      // force reflow
+      void el.offsetWidth;
+      el.classList.add(el === hitCell ? 'hit' : 'miss');
+    };
+
+    setInterval(() => retrigger(hitCell), 800);
+    setInterval(() => retrigger(missCell), 900);
+  </script> -->
+</body>
+
+</html>
