@@ -66,6 +66,26 @@ function playSfx(path) {
   });
 }
 
+function animateCell(cell, type) {
+  if (!cell) return;
+  const className = `animate-${type}`;
+  if (cell.classList.contains(className)) {
+    return;
+  }
+  cell.classList.add(className);
+  const cleanup = () => {
+    cell.classList.remove(className);
+  };
+  const handleEvent = () => {
+    cleanup();
+    cell.removeEventListener('animationend', handleEvent);
+    cell.removeEventListener('animationcancel', handleEvent);
+  };
+  cell.addEventListener('animationend', handleEvent);
+  cell.addEventListener('animationcancel', handleEvent);
+  window.setTimeout(handleEvent, 900);
+}
+
 let elements = null;
 let menuOpen = false;
 let dragPreviewCells = [];
@@ -1194,12 +1214,12 @@ async function finalizePlayerAttack() {
   if (state.mode === GAME_MODES.SOLO) {
     const result = resolveAttackAgainstBoard(state.aiBoard, coordinate);
     state.attackResults[coordinate] = result.hit ? 'hit' : 'miss';
-    await playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
     const cellEl = elements.boards.attack.querySelector(`[data-coord="${coordinate}"]`);
     if (cellEl) {
       cellEl.classList.remove('selected-target', 'occupied');
       cellEl.classList.add(result.hit ? 'hit' : 'miss');
     }
+    await playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
     state.attackSelection = null;
     if (result.hit) {
       pushStatus(`Direct hit at ${coordinate}!`, 'success');
@@ -1275,8 +1295,11 @@ async function aiTakeTurn() {
   const result = resolveAttackAgainstBoard(state.playerBoard, coordinate);
   state.opponentAttackHistory.add(coordinate);
   pushStatus(`Incoming strike at ${coordinate}!`, 'warning');
-  await playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
+  await playSfx(SFX_PATHS.FIRE);
   renderPlayerBoard();
+  const playerCell = elements.boards.player.querySelector(`[data-coord="${coordinate}"]`);
+  animateCell(playerCell, result.hit ? 'hit' : 'miss');
+  await playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
   if (result.hit) {
     pushStatus('Enemy artillery reports a hit!', 'danger');
     if (result.destroyed) {
@@ -1547,12 +1570,12 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
     if (attacker === state.socketId) {
       state.attackResults[coordinate] = result.hit ? 'hit' : 'miss';
       state.attackHistory.add(coordinate);
-      await playSfx(soundPath);
       const cellEl = elements.boards.attack.querySelector(`[data-coord="${coordinate}"]`);
       if (cellEl) {
         cellEl.classList.remove('selected-target');
         cellEl.classList.add(result.hit ? 'hit' : 'miss');
       }
+      await playSfx(soundPath);
       if (result.hit) {
         pushStatus(`Direct hit at ${coordinate}!`, 'success');
         if (result.destroyedUnit) {
@@ -1564,8 +1587,11 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
     } else {
       state.opponentAttackHistory.add(coordinate);
       const resultBoard = resolveAttackAgainstBoard(state.playerBoard, coordinate);
-      await playSfx(soundPath);
+      await playSfx(SFX_PATHS.FIRE);
       renderPlayerBoard();
+      const playerCell = elements.boards.player.querySelector(`[data-coord="${coordinate}"]`);
+      animateCell(playerCell, resultBoard.hit ? 'hit' : 'miss');
+      await playSfx(soundPath);
       if (resultBoard.hit) {
         pushStatus(`Our ${resultBoard.destroyed || 'unit'} was hit at ${coordinate}!`, 'danger');
         if (resultBoard.destroyed) {
