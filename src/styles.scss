@@ -96,7 +96,6 @@ h1 {
 }
 .action-area {
   overflow: hidden;
-  width: 90%;
 }
 
 .action-area--track {
@@ -109,7 +108,6 @@ h1 {
 .action-area--panel {
   flex: 0 0 100%;
   box-sizing: border-box;
-  padding: fw.$spacing-md;
 }
 
 .status-line {
@@ -122,39 +120,78 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: fw.$spacing-sm;
-  font-size: 0.68rem;
-  line-height: 1.4;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: fw.$radius-lg;
+  padding: fw.$spacing-sm;
   color: fw.$text;
+  box-shadow: fw.$elevation-soft;
 
-  &.status-feed {
-    max-height: 200px;
+  .status-feed {
+    max-height: 220px;
     overflow-y: auto;
-  }
-  &.status-item {
     display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding-right: 0.25rem;
+    font-size: fw.$text-size-small;
+  }
+
+  .status-item {
+    display: flex;
+    align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    margin-bottom: 0.35rem;
-    text-transform: none;
+    padding: 0.35rem 0.45rem;
+    border-radius: fw.$radius-sm;
+    border: 1px solid transparent;
+    border-left-width: 3px;
+    border-left-style: solid;
+    background: rgba(255, 255, 255, 0.02);
 
-    & &span:first-child {
-      color: fw.$text-dim;
+    span:first-child {
+      width: 100%;
+    }
+
+    strong {
+      font-weight: 900;
     }
 
     &.status-success {
       color: fw.$color-secondary;
+      border-left-color: rgba(fw.$color-secondary, 0.8);
+      background: rgba(fw.$color-secondary, 0.1);
     }
 
     &.status-warning {
       color: #ffb347;
+      border-left-color: rgba(255, 179, 71, 0.8);
+      background: rgba(255, 179, 71, 0.12);
     }
 
     &.status-danger {
       color: #ff5c5c;
+      border-left-color: rgba(255, 92, 92, 0.8);
+      background: rgba(255, 92, 92, 0.1);
     }
 
     &.status-info {
       color: fw.$text;
+      border-left-color: rgba(255, 255, 255, 0.4);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    &.status-round {
+      justify-content: center;
+      font-weight: 700;
+      letter-spacing: 0.55em;
+      text-transform: uppercase;
+      color: fw.$color-secondary;
+
+      span:first-child {
+        color: inherit;
+        width: auto;
+      }
     }
   }
 }
@@ -358,12 +395,6 @@ h1 {
   pointer-events: none;
 }
 
-.unit-item.selected {
-  background: rgba(255, 45, 131, 0.2);
-  border-color: rgba(255, 45, 131, 0.6);
-  box-shadow: 0 0 18px rgba(255, 45, 131, 0.35);
-}
-
 .unit-thumb-wrapper {
   width: 48px;
   height: 48px;
@@ -435,6 +466,7 @@ button {
   border-radius: 10px;
   border-color: fw.$color-primary;
   border-width: 0px;
+  border-bottom: 3px solid transparent;
   background-color: rgba(fw.$color-secondary, 0.1);
   letter-spacing: 1.5px;
   font-size: fw.$text-size-normal;
@@ -442,9 +474,23 @@ button {
   color: fw.$color-secondary;
   cursor: pointer;
   font-family: fw.$font-regular;
-  font-weight: 600;
+  font-weight: 900;
   text-transform: uppercase;
   line-height: 1.1;
+
+  &:has(.material-symbols-outlined) {
+    gap: fw.$grid-gap-md;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    .material-symbols-outlined {
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
   &:hover,
   &:active {
     background-color: rgba(fw.$color-secondary, 0.3);
@@ -479,6 +525,7 @@ button {
   }
   & small {
     font-size: fw.$text-size-small;
+    font-weight: 600;
   }
   &.large {
     font-size: fw.$text-size-large;
@@ -489,6 +536,10 @@ button {
   &.disabled {
     opacity: 0.5;
     pointer-events: none;
+  }
+  & .material-symbols-outlined {
+    font-size: 120%;
+    display: inline-block;
   }
 }
 .form-field-group {
@@ -538,7 +589,9 @@ button {
 }
 .input-shell {
   height: 50px;
-  background-color: rgba(fw.$color-secondary, 0.1);
+  // background-color: rgba(fw.$color-secondary, 0.1);
+  border: 1px solid fw.$color-secondary;
+  border-radius: fw.$radius-md;
   &::before {
     content: ">";
     padding-top: 15px;
@@ -580,7 +633,6 @@ button {
   grid-row: 1;
   margin-bottom: 0;
   padding-bottom: fw.$spacing-xs;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .axis-side {
@@ -632,7 +684,6 @@ button {
   content: "";
   position: absolute;
   inset: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
   pointer-events: none;
   border-radius: calc(fw.$radius-lg - 2px);
 }
@@ -658,24 +709,6 @@ button {
 
   .cell {
     border-color: rgba(fw.$color-secondary, 0.2);
-  }
-
-  .cell.hit {
-    background: radial-gradient(circle, rgba(255, 118, 77, 0.8), rgba(94, 0, 0, 0.8));
-    border-color: rgba(255, 118, 77, 0.8);
-    animation: hitPulse 0.6s ease-out;
-  }
-
-  .cell.miss {
-    background: radial-gradient(circle, rgba(69, 240, 255, 0.25), rgba(15, 28, 45, 0.8));
-    border-color: rgba(69, 240, 255, 0.45);
-  }
-
-  .cell.destroyed::after {
-    content: "✶";
-    color: fw.$color-hit;
-    font-size: 1.1rem;
-    animation: explode 0.6s ease-out forwards;
   }
 
   .cell.unit-anchor {
@@ -730,7 +763,6 @@ button {
 
   .cell.unit-anchor.hit .unit-image-wrap img,
   .cell.unit-anchor.unit-damaged .unit-image-wrap img {
-    filter: grayscale(0.5) brightness(0.75) drop-shadow(0 0 10px rgba(255, 118, 77, 0.6));
   }
 
   .cell.unit-anchor.unit-destroyed .unit-image-wrap img {
@@ -740,10 +772,66 @@ button {
 }
 #playerBoard {
   @extend #placementBoard;
+  .cell.hit {
+    background: radial-gradient(circle, rgba(255, 118, 77, 0.8), rgba(94, 0, 0, 0.8));
+    border-color: rgba(255, 118, 77, 0.8);
+    animation: hitPulse 0.6s ease-out;
+  }
+
+  .cell.miss {
+    box-shadow: inset 0px 0px 6px 9px rgba(0, 0, 0, 0.4);
+    background-image: url("/assets/img/sprites/crater.png");
+    background-size: contain;
+  }
+
+  .cell.destroyed::after {
+    content: "✶";
+    color: fw.$color-hit;
+    font-size: 1.1rem;
+    animation: explode 0.6s ease-out forwards;
+  }
+  .cell {
+    &.animate-hit::before,
+    &.animate-miss::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-repeat: no-repeat;
+      background-size: 800% 100%;
+      animation-duration: 0.9s;
+      animation-iteration-count: 1;
+      animation-timing-function: steps(8);
+      animation-fill-mode: forwards;
+      z-index: 3;
+    }
+
+    &.animate-hit::before {
+      background-image: url("/assets/img/sprites/sprite_hit.png");
+      animation-name: hitSprite;
+    }
+
+    &.animate-miss::before {
+      background-image: url("/assets/img/sprites/sprite_miss.png");
+      animation-name: missSprite;
+    }
+
+    &.animate-miss::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: contain;
+      opacity: 0;
+      animation: craterAppear 0.25s ease-out forwards;
+      animation-delay: 0.9s;
+      z-index: 4;
+    }
+  }
 }
 #attackBoard {
-  border-color: rgba(fw.$color-primary, 0.8);
-
   .cell {
     border-color: rgba(fw.$color-primary, 0.25);
     &:hover {
@@ -752,8 +840,17 @@ button {
   }
 
   .cell.selected-target {
-    outline-color: rgba(255, 207, 93, 0.9);
-    box-shadow: 0 0 16px rgba(255, 207, 93, 0.8);
+    border-color: rgba(255, 207, 93, 0.9);
+  }
+
+  .cell.hit {
+    background-color: rgba(255, 93, 93, 0.95);
+    border-color: rgba(255, 93, 93, 1);
+  }
+
+  .cell.miss {
+    background-color: rgba(255, 255, 255, 0.95);
+    border-color: rgba(255, 255, 255, 0.9);
   }
 }
 
@@ -817,6 +914,17 @@ button {
   }
   to {
     background-position: 133% center;
+  }
+}
+
+@keyframes craterAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 

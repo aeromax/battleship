@@ -34,12 +34,59 @@ const state = {
   continuePayload: null,
   awaitingSave: false,
   draggingUnit: null,
+  roundNumber: 0,
+  roundActive: false,
 };
+
+function getOpponentLabel(defaultLabel = 'Enemy') {
+  if (state.mode === GAME_MODES.SOLO) {
+    return 'Computer';
+  }
+  return state.opponentName || defaultLabel;
+}
 
 const SFX_PATHS = {
   FIRE: '/assets/sfx/sfx_fire.wav',
   HIT: '/assets/sfx/sfx_hit.wav',
   MISS: '/assets/sfx/sfx_miss.wav',
+};
+
+const COPY = {
+  status: {
+    unitCapReached: 'Unit cap reached. Remove a unit before placing another.',
+    selectUnit: 'Select a unit to deploy.',
+    unitAlreadyPlaced: 'Each unit profile may be deployed once.',
+    placementInvalid: 'Placement invalid. Check terrain boundaries.',
+    missionAborted: 'Mission aborted. Returning to command.',
+    connectingToPlayer: (name) => `Connecting to ${name}...`,
+    roundLabel: (round) => `Round ${round}`,
+    opponentReady: (label) => `${label} ready for battle.`,
+    bothForcesDeployed: 'Both forces deployed. Roll to determine initiative.',
+    diceTie: 'Both operators rolled the same value. Roll again.',
+    initiativePlayer: '→ You have the initiative. Strike when ready.',
+    initiativeOpponent: (label) => `→ ${label}'s forces seize the first shot.`,
+    deploymentLocked: 'Deployment locked. Awaiting command to begin.',
+    deploymentTransmitted: '📡 Deployment transmitted to command.',
+    deployEveryUnit: '⚠️ Deploy every unit before locking in this deployment.',
+    holdFire: '⚠️ Hold fire until it is your turn.',
+    coordinateTargeted: '⚠️ Coordinate already targeted.',
+    directHit: (coordinate) => `💥 Direct hit at ${coordinate}!`,
+    enemyUnitDestroyed: (label, unit) => `💥 ${label}'s <strong>${unit}</strong> destroyed!`,
+    allHostilesNeutralized: '💥 All hostiles neutralized! 💥',
+    attackUnsuccessfulAt: (coordinate) => `🚫 Attack unsuccessful at ${coordinate}.`,
+    opponentHit: (label, target, coordinate) => `💥 ${label} hits your <strong>${target}</strong> at ${coordinate}!`,
+    unitDestroyed: (unit) => `💥 Your <strong>${unit}</strong> has been destroyed! 💥`,
+    opponentStrikeFailed: (label, coordinate) => `💨 ${label} strike at ${coordinate} unsuccessful.`,
+    strikeAuthorized: 'Strike sequence authorized.',
+    strikeHoldPosition: 'Hold position; awaiting opponent.',
+    attackUnsuccessful: '🚫 Attack unsuccessful!',
+    ourUnitHit: (unit, coordinate) => `💥 Our ${unit} was hit at ${coordinate}!`,
+    opponentAttackUnsuccessful: (label) => `🚫 ${label} attack unsuccessful!`,
+    missionSaved: '💾 Mission state stored successfully.',
+    commandError: (message) => message || '⚠️ Command error encountered.',
+    opponentDisconnected: '⚠️ Opponent disconnected. Mission aborted.',
+    reconnectMultiplayer: '⚠️ Reconnect to multiplayer session via Tactical Link.',
+  },
 };
 
 function playSfx(path) {
@@ -824,22 +871,22 @@ function attemptPlaceSelectedUnit(coordinate) {
   if (state.setupLocked) return false;
   if (!coordinate) return false;
   if (state.placedUnits.length >= MAX_UNITS) {
-    pushStatus('Unit cap reached. Remove a unit before placing another.', 'warning');
+    pushStatus(COPY.status.unitCapReached, 'warning');
     return false;
   }
   const unit = state.selectedUnit;
   if (!unit) {
-    pushStatus('Select a unit to deploy.', 'warning');
+    pushStatus(COPY.status.selectUnit, 'warning');
     return false;
   }
   if (state.placedUnits.some((placed) => placed.name === unit.name)) {
-    pushStatus('Each unit profile may be deployed once.', 'warning');
+    pushStatus(COPY.status.unitAlreadyPlaced, 'warning');
     playTone(SOUNDS.ALERT, 200);
     return false;
   }
   const coordinates = canPlaceUnit(state.placementBoard, unit, coordinate, state.orientation);
   if (!coordinates) {
-    pushStatus('Placement invalid. Check terrain boundaries.', 'danger');
+    pushStatus(COPY.status.placementInvalid, 'danger');
     playTone(SOUNDS.ALERT, 250);
     return false;
   }
@@ -937,7 +984,7 @@ function handleMenuAction(action) {
         socket.emit('cancelMatch');
       }
       if (state.mode === GAME_MODES.SOLO && state.gameStarted) {
-        pushStatus('Mission aborted. Returning to command.', 'warning');
+        pushStatus(COPY.status.missionAborted, 'warning');
       }
       state.mode = null;
       state.gameId = null;
@@ -945,6 +992,7 @@ function handleMenuAction(action) {
       state.setupLocked = false;
       state.dieComplete = false;
       state.playerTurn = false;
+      endRound();
       state.currentTurnSocket = null;
       state.attackSelection = null;
       state.attackHistory = new Set();
@@ -983,9 +1031,9 @@ function updateReadyButton() {
 
 function pushStatus(message, context = 'info') {
   const timestamp = new Date().toLocaleTimeString();
-  state.statusMessages.unshift({ message, timestamp, context });
+  state.statusMessages.push({ message, timestamp, context });
   if (state.statusMessages.length > 20) {
-    state.statusMessages.length = 20;
+    state.statusMessages.shift();
   }
   renderStatusFeed();
 }
@@ -999,6 +1047,26 @@ function renderStatusFeed() {
         </div>`,
     )
     .join('');
+  const feed = elements.hud.statusFeed;
+  if (feed) {
+    feed.scrollTop = feed.scrollHeight;
+  }
+}
+
+function startRoundIfNeeded() {
+  if (!state.playerTurn || state.roundActive) return;
+  state.roundNumber += 1;
+  state.roundActive = true;
+  pushStatus(COPY.status.roundLabel(state.roundNumber), 'round');
+}
+
+function endRound() {
+  state.roundActive = false;
+}
+
+function resetRoundCounter() {
+  state.roundNumber = 0;
+  state.roundActive = false;
 }
 
 function setTurnBanner(message) {
@@ -1031,7 +1099,7 @@ function showPlayersList(players) {
     if (player.status === 'online') {
       li.addEventListener('click', () => {
         socket.emit('createMatch', { opponentId: player.socketId });
-        pushStatus(`Connecting to ${player.name}...`, 'info');
+        pushStatus(COPY.status.connectingToPlayer(player.name), 'info');
       });
     } else {
       li.classList.add('disabled');
@@ -1049,6 +1117,7 @@ function showPostGameModal(title, message) {
 function setupSoloSession() {
   state.mode = GAME_MODES.SOLO;
   state.opponentName = 'CPU';
+  resetRoundCounter();
   renderUnitList();
   resetPlacementBoard();
   state.aiBoard = createEmptyBoard();
@@ -1090,6 +1159,7 @@ function populateAiBoard() {
 }
 
 function enterGameScreen() {
+  resetRoundCounter();
   state.playerBoard = cloneBoard(state.placementBoard);
   switchScreen(MODES.GAME);
   renderPlayerBoard();
@@ -1099,12 +1169,14 @@ function enterGameScreen() {
 function establishInitiative() {
   const playerStarts = Math.random() < 0.5;
   state.playerTurn = playerStarts;
-  const message = playerStarts
-    ? 'You have the initiative. Strike when ready.'
-    : 'Enemy forces seize the first shot.';
+  const opponentLabel = getOpponentLabel('Enemy');
+  const initiativeMessage = playerStarts
+    ? COPY.status.initiativePlayer
+    : COPY.status.initiativeOpponent(opponentLabel);
   setTurnBanner(playerStarts ? 'Your turn!' : 'Opponent turn');
-  pushStatus(message, playerStarts ? 'success' : 'warning');
+  pushStatus(initiativeMessage, playerStarts ? 'success' : 'warning');
   syncAttackInterface();
+  startRoundIfNeeded();
   if (!playerStarts) {
     window.setTimeout(aiTakeTurn, 1100);
   }
@@ -1123,7 +1195,7 @@ function handleReadySolo() {
   if (state.placedUnits.length !== MAX_UNITS || state.setupLocked) return;
   populateAiBoard();
   state.setupLocked = true;
-  pushStatus('Deployment locked. Awaiting command to begin.', 'info');
+  pushStatus(COPY.status.deploymentLocked, 'info');
   enterGameScreen();
   beginSoloCombat();
 }
@@ -1137,12 +1209,12 @@ function handleReadyMultiplayer() {
     board: state.playerBoard,
     pieces: state.placedUnits,
   });
-  pushStatus('Deployment transmitted to command.', 'info');
+  pushStatus(COPY.status.deploymentTransmitted, 'info');
 }
 
 function handleReady() {
   if (state.placedUnits.length !== MAX_UNITS) {
-    pushStatus('Deploy every unit before locking in this deployment.', 'warning');
+    pushStatus(COPY.status.deployEveryUnit, 'warning');
     playTone(SOUNDS.ALERT, 200);
     return;
   }
@@ -1168,18 +1240,23 @@ function resolveAttackAgainstBoard(board, coordinate) {
     const victory = board.units.every((unitItem) =>
       unitItem.coordinates.every((unitCoord) => board.cells[unitCoord].hit),
     );
-    return { hit: true, destroyed: destroyed ? unit.name : null, victory };
+    return {
+      hit: true,
+      destroyed: destroyed ? unit.name : null,
+      unitName: unit?.name ?? null,
+      victory,
+    };
   }
   return { hit: false };
 }
 
 function handlePlayerAttack(coordinate) {
   if (!state.playerTurn || !state.dieComplete) {
-    pushStatus('Hold fire until it is your turn.', 'warning');
+    pushStatus(COPY.status.holdFire, 'warning');
     return;
   }
   if (state.attackHistory.has(coordinate)) {
-    pushStatus('Coordinate already targeted.', 'warning');
+    pushStatus(COPY.status.coordinateTargeted, 'warning');
     return;
   }
   const attackBoard = elements?.boards?.attack;
@@ -1212,6 +1289,7 @@ async function finalizePlayerAttack() {
   state.attackHistory.add(coordinate);
   await playSfx(SFX_PATHS.FIRE);
   if (state.mode === GAME_MODES.SOLO) {
+    const opponentLabel = getOpponentLabel('Enemy');
     const result = resolveAttackAgainstBoard(state.aiBoard, coordinate);
     state.attackResults[coordinate] = result.hit ? 'hit' : 'miss';
     const cellEl = elements.boards.attack.querySelector(`[data-coord="${coordinate}"]`);
@@ -1222,23 +1300,25 @@ async function finalizePlayerAttack() {
     await playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
     state.attackSelection = null;
     if (result.hit) {
-      pushStatus(`Direct hit at ${coordinate}!`, 'success');
+      pushStatus(COPY.status.directHit(coordinate), 'success');
       if (result.destroyed) {
-        pushStatus(`Enemy ${result.destroyed} destroyed!`, 'success');
+        pushStatus(COPY.status.enemyUnitDestroyed(opponentLabel, result.destroyed), 'success');
       }
       if (result.victory) {
-        pushStatus('All hostiles neutralized!', 'success');
+        pushStatus(COPY.status.allHostilesNeutralized, 'success');
         setTurnBanner('Victory!');
         state.playerTurn = false;
+        endRound();
         syncAttackInterface();
         showPostGameModal('Mission Success', 'You have secured the battlefield.');
         return;
       }
     } else {
-      pushStatus(`Attack unsuccessful at ${coordinate}.`, 'info');
+      pushStatus(COPY.status.attackUnsuccessfulAt(coordinate), 'info');
     }
     state.playerTurn = false;
     syncAttackInterface();
+    endRound();
     setTurnBanner('Opponent turn...');
     window.setTimeout(aiTakeTurn, 1000);
   } else if (state.mode === GAME_MODES.PVP) {
@@ -1294,29 +1374,31 @@ async function aiTakeTurn() {
   state.aiShots.add(coordinate);
   const result = resolveAttackAgainstBoard(state.playerBoard, coordinate);
   state.opponentAttackHistory.add(coordinate);
-  pushStatus(`Incoming strike at ${coordinate}!`, 'warning');
+  const opponentLabel = getOpponentLabel('Enemy');
   await playSfx(SFX_PATHS.FIRE);
   renderPlayerBoard();
   const playerCell = elements.boards.player.querySelector(`[data-coord="${coordinate}"]`);
   animateCell(playerCell, result.hit ? 'hit' : 'miss');
   await playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
   if (result.hit) {
-    pushStatus('Enemy artillery reports a hit!', 'danger');
+    const targetLabel = result.unitName ? result.unitName : 'unit';
+    pushStatus(COPY.status.opponentHit(opponentLabel, targetLabel, coordinate), 'danger');
     if (result.destroyed) {
-      pushStatus(`Your ${result.destroyed} has been destroyed!`, 'danger');
+      pushStatus(COPY.status.unitDestroyed(result.destroyed), 'danger');
     }
     if (result.victory) {
       setTurnBanner('Mission failed.');
-      showPostGameModal('Mission Failed', 'Enemy forces overwhelmed your sector.');
+      showPostGameModal('Mission Failed', `${opponentLabel} forces overwhelmed your sector.`);
       return;
     }
   } else {
-    pushStatus('Enemy attack unsuccessful!', 'success');
+    pushStatus(COPY.status.opponentStrikeFailed(opponentLabel, coordinate), 'info');
   }
   state.playerTurn = true;
-  setTurnBanner('Your turn!');
+  startRoundIfNeeded();
   state.attackSelection = null;
   syncAttackInterface();
+  setTurnBanner('Your turn!');
 }
 
 function setupEventListeners() {
@@ -1531,12 +1613,12 @@ socket.on('playerList', (players) => {
 
 socket.on('playerReady', ({ socketId }) => {
   if (socketId !== state.socketId) {
-    pushStatus(`${state.opponentName || 'Opponent'} ready for battle.`, 'info');
+    pushStatus(COPY.status.opponentReady(getOpponentLabel('Enemy')), 'info');
   }
 });
 
 socket.on('setupComplete', () => {
-  pushStatus('Both forces deployed. Roll to determine initiative.', 'info');
+  pushStatus(COPY.status.bothForcesDeployed, 'info');
   state.setupLocked = true;
   enterGameScreen();
 });
@@ -1555,9 +1637,14 @@ socket.on('turnStart', ({ currentTurn, order }) => {
   const playerIndex = order.indexOf(state.socketId);
   if (playerIndex !== -1) {
     pushStatus(
-      state.playerTurn ? 'Strike sequence authorized.' : 'Hold position; awaiting opponent.',
+      state.playerTurn ? COPY.status.strikeAuthorized : COPY.status.strikeHoldPosition,
       state.playerTurn ? 'success' : 'info',
     );
+  }
+  if (state.playerTurn) {
+    startRoundIfNeeded();
+  } else {
+    endRound();
   }
   setTurnBanner(state.playerTurn ? 'Your turn!' : `${state.opponentName} turn`);
   state.attackSelection = null;
@@ -1567,6 +1654,7 @@ socket.on('turnStart', ({ currentTurn, order }) => {
 socket.on('attackResult', async ({ attacker, coordinate, result }) => {
   const soundPath = result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS;
   try {
+    const opponentLabel = getOpponentLabel('Enemy');
     if (attacker === state.socketId) {
       state.attackResults[coordinate] = result.hit ? 'hit' : 'miss';
       state.attackHistory.add(coordinate);
@@ -1577,12 +1665,12 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
       }
       await playSfx(soundPath);
       if (result.hit) {
-        pushStatus(`Direct hit at ${coordinate}!`, 'success');
+        pushStatus(COPY.status.directHit(coordinate), 'success');
         if (result.destroyedUnit) {
-          pushStatus(`Enemy ${result.destroyedUnit} destroyed!`, 'success');
+          pushStatus(COPY.status.enemyUnitDestroyed(opponentLabel, result.destroyedUnit), 'success');
         }
       } else {
-        pushStatus('Attack unsuccessful!', 'info');
+        pushStatus(COPY.status.attackUnsuccessful, 'info');
       }
     } else {
       state.opponentAttackHistory.add(coordinate);
@@ -1593,12 +1681,15 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
       animateCell(playerCell, resultBoard.hit ? 'hit' : 'miss');
       await playSfx(soundPath);
       if (resultBoard.hit) {
-        pushStatus(`Our ${resultBoard.destroyed || 'unit'} was hit at ${coordinate}!`, 'danger');
+        pushStatus(
+          COPY.status.ourUnitHit(resultBoard.destroyed || 'unit', coordinate),
+          'danger',
+        );
         if (resultBoard.destroyed) {
-          pushStatus(`Your ${resultBoard.destroyed} has been destroyed!`, 'danger');
+          pushStatus(COPY.status.unitDestroyed(resultBoard.destroyed), 'danger');
         }
       } else {
-        pushStatus('Enemy attack unsuccessful!', 'success');
+        pushStatus(COPY.status.opponentAttackUnsuccessful(opponentLabel), 'success');
       }
     }
   } catch (error) {
@@ -1611,6 +1702,7 @@ socket.on('gameOver', ({ winner, winnerName }) => {
   const victory = winner === state.socketId;
   setTurnBanner(victory ? 'Victory!' : 'Defeat.');
   state.playerTurn = false;
+  endRound();
   state.attackSelection = null;
   syncAttackInterface();
   showPostGameModal(
@@ -1625,6 +1717,11 @@ socket.on('gameState', (payload) => {
   if (payload.currentTurn) {
     state.currentTurnSocket = payload.currentTurn;
     state.playerTurn = payload.currentTurn === state.socketId;
+    if (state.playerTurn) {
+      startRoundIfNeeded();
+    } else {
+      endRound();
+    }
     setTurnBanner(state.playerTurn ? 'Your turn!' : `${state.opponentName} turn`);
     state.attackSelection = null;
     syncAttackInterface();
@@ -1633,19 +1730,20 @@ socket.on('gameState', (payload) => {
 
 socket.on('saved', () => {
   if (state.awaitingSave) {
-    pushStatus('Mission state stored successfully.', 'success');
+    pushStatus(COPY.status.missionSaved, 'success');
     state.awaitingSave = false;
   }
 });
 
 socket.on('matchError', ({ message }) => {
-  pushStatus(message || 'Command error encountered.', 'danger');
+  pushStatus(COPY.status.commandError(message), 'danger');
 });
 
 socket.on('opponentLeft', () => {
-  pushStatus('Opponent disconnected. Mission aborted.', 'warning');
+  pushStatus(COPY.status.opponentDisconnected, 'warning');
   setTurnBanner('Opponent disconnected');
   state.playerTurn = false;
+  endRound();
   state.attackSelection = null;
   syncAttackInterface();
   showPostGameModal('Mission Interrupted', 'Opponent left the battlefield.');
@@ -1680,10 +1778,14 @@ function loadSavedGame(data) {
     renderStatusFeed();
     setTurnBanner(state.playerTurn ? 'Your turn!' : 'Opponent turn');
     state.attackSelection = null;
+    resetRoundCounter();
+    if (state.playerTurn) {
+      startRoundIfNeeded();
+    }
     syncAttackInterface();
     switchScreen(MODES.GAME);
   } else if (data.mode === 'pvp') {
-    pushStatus('Reconnect to multiplayer session via Tactical Link.', 'info');
+    pushStatus(COPY.status.reconnectMultiplayer, 'info');
   }
 }
 

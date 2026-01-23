@@ -6,12 +6,16 @@ const HomeScreen = () => (
       </div>
       <div className="flex-column action-area">
         <div className="flex-row action-area--track">
-          <div className="flex-column justify-center flex-gap-md action-area--panel action-area--buttons">
+          <div className="flex-row justify-center flex-gap-md action-area--panel action-area--buttons">
             <button id="newGameBtn" className="button primary large">
-              NEW DEPLOYMENT
+              <span class="material-symbols-outlined">
+                military_tech
+              </span> NEW DEPLOYMENT
             </button>
             <button id="loadLocalSaveBtn" className="button primary large">
-              RESUME SAVED OP
+              <span class="material-symbols-outlined">
+                save
+              </span> RESUME SAVED OP
             </button>
           </div>
           <div className="flex-column flex-around flex-gap-md action-area--panel action-area--callsign">
@@ -54,7 +58,7 @@ const HomeScreen = () => (
           </div>
         </div>
       </div>
-      <div id="homeStatus" className="status-panel"></div>
+      <div id="homeStatus" className="align-stretch status-panel"></div>
     </div>
   </section>
 );
@@ -195,7 +199,7 @@ const SetupScreen = () => (
             </button>
           </div>
         </div>
-        <button id="readyBtn" className="primary disabled" disabled>
+        <button id="readyBtn" className="primary red disabled" disabled>
           Deploy!
         </button>
       </div>

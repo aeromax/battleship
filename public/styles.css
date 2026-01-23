@@ -237,7 +237,6 @@ h1 {
 
 .action-area {
   overflow: hidden;
-  width: 90%;
 }
 
 .action-area--track {
@@ -250,7 +249,6 @@ h1 {
 .action-area--panel {
   flex: 0 0 100%;
   box-sizing: border-box;
-  padding: 1rem;
 }
 
 .status-line {
@@ -263,35 +261,70 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  font-size: 0.68rem;
-  line-height: 1.4;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 0.5rem;
   color: #d3f7ff;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.45);
 }
-.status-panel.status-feed {
-  max-height: 200px;
+.status-panel .status-feed {
+  max-height: 220px;
   overflow-y: auto;
-}
-.status-panel.status-item {
   display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-right: 0.25rem;
+  font-size: 0.8rem;
+}
+.status-panel .status-item {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  margin-bottom: 0.35rem;
-  text-transform: none;
+  padding: 0.35rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  border-left-width: 3px;
+  border-left-style: solid;
+  background: rgba(255, 255, 255, 0.02);
 }
-.status-panel.status-item .status-panel.status-itemspan:first-child {
-  color: rgba(211, 247, 255, 0.7);
+.status-panel .status-item span:first-child {
+  width: 100%;
 }
-.status-panel.status-item.status-success {
+.status-panel .status-item strong {
+  font-weight: 900;
+}
+.status-panel .status-item.status-success {
+  color: #7fff00;
+  border-left-color: rgba(127, 255, 0, 0.8);
+  background: rgba(127, 255, 0, 0.1);
+}
+.status-panel .status-item.status-warning {
+  color: #ffb347;
+  border-left-color: rgba(255, 179, 71, 0.8);
+  background: rgba(255, 179, 71, 0.12);
+}
+.status-panel .status-item.status-danger {
+  color: #ff5c5c;
+  border-left-color: rgba(255, 92, 92, 0.8);
+  background: rgba(255, 92, 92, 0.1);
+}
+.status-panel .status-item.status-info {
+  color: #d3f7ff;
+  border-left-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.04);
+}
+.status-panel .status-item.status-round {
+  justify-content: center;
+  font-weight: 700;
+  letter-spacing: 0.55em;
+  text-transform: uppercase;
   color: #7fff00;
 }
-.status-panel.status-item.status-warning {
-  color: #ffb347;
-}
-.status-panel.status-item.status-danger {
-  color: #ff5c5c;
-}
-.status-panel.status-item.status-info {
-  color: #d3f7ff;
+.status-panel .status-item.status-round span:first-child {
+  color: inherit;
+  width: auto;
 }
 
 .panel {
@@ -451,12 +484,6 @@ h1 {
   pointer-events: none;
 }
 
-.unit-item.selected {
-  background: rgba(255, 45, 131, 0.2);
-  border-color: rgba(255, 45, 131, 0.6);
-  box-shadow: 0 0 18px rgba(255, 45, 131, 0.35);
-}
-
 .unit-thumb-wrapper {
   width: 48px;
   height: 48px;
@@ -529,6 +556,7 @@ button {
   border-radius: 10px;
   border-color: #efefef;
   border-width: 0px;
+  border-bottom: 3px solid transparent;
   background-color: rgba(127, 255, 0, 0.1);
   letter-spacing: 1.5px;
   font-size: 1rem;
@@ -536,9 +564,21 @@ button {
   color: #7fff00;
   cursor: pointer;
   font-family: "Doto", "Courier New", monospace;
-  font-weight: 600;
+  font-weight: 900;
   text-transform: uppercase;
   line-height: 1.1;
+}
+button:has(.material-symbols-outlined) {
+  gap: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+button:has(.material-symbols-outlined) .material-symbols-outlined {
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 button:hover, button:active {
   background-color: rgba(127, 255, 0, 0.3);
@@ -571,6 +611,7 @@ button.red:hover, button.red:active {
 }
 button small {
   font-size: 0.8rem;
+  font-weight: 600;
 }
 button.large {
   font-size: 1.5rem;
@@ -581,6 +622,10 @@ button.selected {
 button.disabled {
   opacity: 0.5;
   pointer-events: none;
+}
+button .material-symbols-outlined {
+  font-size: 120%;
+  display: inline-block;
 }
 
 .form-field-group {
@@ -629,7 +674,8 @@ button.disabled {
 
 .input-shell {
   height: 50px;
-  background-color: rgba(127, 255, 0, 0.1);
+  border: 1px solid #7fff00;
+  border-radius: 10px;
 }
 .input-shell::before {
   content: ">";
@@ -671,7 +717,6 @@ button.disabled {
   grid-row: 1;
   margin-bottom: 0;
   padding-bottom: 0.25rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .axis-side {
@@ -723,7 +768,6 @@ button.disabled {
   content: "";
   position: absolute;
   inset: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
   pointer-events: none;
   border-radius: 14px;
 }
@@ -746,21 +790,6 @@ button.disabled {
 }
 #placementBoard .cell, #playerBoard .cell {
   border-color: rgba(127, 255, 0, 0.2);
-}
-#placementBoard .cell.hit, #playerBoard .cell.hit {
-  background: radial-gradient(circle, rgba(255, 118, 77, 0.8), rgba(94, 0, 0, 0.8));
-  border-color: rgba(255, 118, 77, 0.8);
-  animation: hitPulse 0.6s ease-out;
-}
-#placementBoard .cell.miss, #playerBoard .cell.miss {
-  background: radial-gradient(circle, rgba(69, 240, 255, 0.25), rgba(15, 28, 45, 0.8));
-  border-color: rgba(69, 240, 255, 0.45);
-}
-#placementBoard .cell.destroyed::after, #playerBoard .cell.destroyed::after {
-  content: "✶";
-  color: #ff5d5d;
-  font-size: 1.1rem;
-  animation: explode 0.6s ease-out forwards;
 }
 #placementBoard .cell.unit-anchor, #playerBoard .cell.unit-anchor {
   position: relative;
@@ -802,19 +831,62 @@ button.disabled {
 #placementBoard .cell.unit-anchor.unit-vertical .unit-image-wrap img, #playerBoard .cell.unit-anchor.unit-vertical .unit-image-wrap img {
   transform: rotate(0deg);
 }
-#placementBoard .cell.unit-anchor.hit .unit-image-wrap img, #playerBoard .cell.unit-anchor.hit .unit-image-wrap img,
-#placementBoard .cell.unit-anchor.unit-damaged .unit-image-wrap img,
-#playerBoard .cell.unit-anchor.unit-damaged .unit-image-wrap img {
-  filter: grayscale(0.5) brightness(0.75) drop-shadow(0 0 10px rgba(255, 118, 77, 0.6));
-}
 #placementBoard .cell.unit-anchor.unit-destroyed .unit-image-wrap img, #playerBoard .cell.unit-anchor.unit-destroyed .unit-image-wrap img {
   opacity: 0.75;
   filter: grayscale(0.85) brightness(0.6);
 }
 
-#attackBoard {
-  border-color: rgba(239, 239, 239, 0.8);
+#playerBoard .cell.hit {
+  background: radial-gradient(circle, rgba(255, 118, 77, 0.8), rgba(94, 0, 0, 0.8));
+  border-color: rgba(255, 118, 77, 0.8);
+  animation: hitPulse 0.6s ease-out;
 }
+#playerBoard .cell.miss {
+  box-shadow: inset 0px 0px 6px 9px rgba(0, 0, 0, 0.4);
+  background-image: url("/assets/img/sprites/crater.png");
+  background-size: contain;
+}
+#playerBoard .cell.destroyed::after {
+  content: "✶";
+  color: #ff5d5d;
+  font-size: 1.1rem;
+  animation: explode 0.6s ease-out forwards;
+}
+#playerBoard .cell.animate-hit::before, #playerBoard .cell.animate-miss::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-size: 800% 100%;
+  animation-duration: 0.9s;
+  animation-iteration-count: 1;
+  animation-timing-function: steps(8);
+  animation-fill-mode: forwards;
+  z-index: 3;
+}
+#playerBoard .cell.animate-hit::before {
+  background-image: url("/assets/img/sprites/sprite_hit.png");
+  animation-name: hitSprite;
+}
+#playerBoard .cell.animate-miss::before {
+  background-image: url("/assets/img/sprites/sprite_miss.png");
+  animation-name: missSprite;
+}
+#playerBoard .cell.animate-miss::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0;
+  animation: craterAppear 0.25s ease-out forwards;
+  animation-delay: 0.9s;
+  z-index: 4;
+}
+
 #attackBoard .cell {
   border-color: rgba(239, 239, 239, 0.25);
 }
@@ -822,8 +894,15 @@ button.disabled {
   border-color: rgba(239, 239, 239, 0.6);
 }
 #attackBoard .cell.selected-target {
-  outline-color: rgba(255, 207, 93, 0.9);
-  box-shadow: 0 0 16px rgba(255, 207, 93, 0.8);
+  border-color: rgba(255, 207, 93, 0.9);
+}
+#attackBoard .cell.hit {
+  background-color: rgba(255, 93, 93, 0.95);
+  border-color: rgb(255, 93, 93);
+}
+#attackBoard .cell.miss {
+  background-color: rgba(255, 255, 255, 0.95);
+  border-color: rgba(255, 255, 255, 0.9);
 }
 
 .map-label {
@@ -887,6 +966,16 @@ button.disabled {
   }
   to {
     background-position: 133% center;
+  }
+}
+@keyframes craterAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 @keyframes hitPulse {
