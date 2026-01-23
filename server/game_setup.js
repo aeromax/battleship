@@ -4,6 +4,7 @@ export const COLUMNS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 export const MODES = {
   HOME: 'home',
+  PVP: 'pvp',
   SETUP: 'setup',
   GAME: 'game',
 };

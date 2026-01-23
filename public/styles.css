@@ -346,6 +346,58 @@ h1 {
   border: 1px solid rgba(127, 255, 0, 0.1);
 }
 
+.pvp-lobby {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.pvp-lobby__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.pvp-lobby__header h2 {
+  font-size: 1.5rem;
+  letter-spacing: 0.2em;
+  margin: 0;
+}
+
+.player-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.player-list .player-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  text-transform: uppercase;
+  font-size: 0.95rem;
+}
+.player-list .player-row.empty {
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+.player-list .player-row__callsign {
+  font-weight: 700;
+  flex: 1;
+}
+.player-list .player-row__action {
+  flex-shrink: 0;
+}
+
 .overlay-banner {
   position: fixed;
   inset: 0;

@@ -262,6 +262,7 @@ function collectElements(root = document) {
     appRoot: root.getElementById ? root.getElementById('app') : root.querySelector('#app'),
     screens: {
       home: root.getElementById ? root.getElementById('homeScreen') : root.querySelector('#homeScreen'),
+      pvp: root.getElementById ? root.getElementById('pvpScreen') : root.querySelector('#pvpScreen'),
       setup: root.getElementById ? root.getElementById('setupScreen') : root.querySelector('#setupScreen'),
       game: root.getElementById ? root.getElementById('gameScreen') : root.querySelector('#gameScreen'),
     },
@@ -293,6 +294,7 @@ function collectElements(root = document) {
       cancelMode: root.getElementById
         ? root.getElementById('cancelModeBtn')
         : root.querySelector('#cancelModeBtn'),
+      pvpBack: root.getElementById ? root.getElementById('pvpBackBtn') : root.querySelector('#pvpBackBtn'),
       playAgain: root.getElementById ? root.getElementById('playAgainBtn') : root.querySelector('#playAgainBtn'),
       returnHome: root.getElementById ? root.getElementById('returnHomeBtn') : root.querySelector('#returnHomeBtn'),
       abortMission: root.getElementById
@@ -319,6 +321,7 @@ function collectElements(root = document) {
       statusFeed: root.getElementById ? root.getElementById('statusFeed') : root.querySelector('#statusFeed'),
       turnBanner: root.getElementById ? root.getElementById('turnBanner') : root.querySelector('#turnBanner'),
       homeStatus: root.getElementById ? root.getElementById('homeStatus') : root.querySelector('#homeStatus'),
+      pvpStatus: root.getElementById ? root.getElementById('pvpStatus') : root.querySelector('#pvpStatus'),
       postGameTitle: root.getElementById ? root.getElementById('postGameTitle') : root.querySelector('#postGameTitle'),
       postGameMessage: root.getElementById
         ? root.getElementById('postGameMessage')
@@ -1081,31 +1084,92 @@ function requestPlayerRegistration() {
   socket.emit('registerPlayer', { name: state.playerName });
 }
 
+const PVP_LOADING_MESSAGE = 'Scanning for available operators...';
+const PVP_EMPTY_MESSAGE = 'No operators online. Stand by for reinforcements.';
+const PVP_READY_MESSAGE = 'Select an operator to connect.';
+
+function setPlayerListMessage(message) {
+  const list = elements?.lists?.players;
+  if (!list) return;
+  list.innerHTML = '';
+  const row = document.createElement('li');
+  row.className = 'player-row empty';
+  row.textContent = message;
+  list.appendChild(row);
+}
+
+function setPvpStatusLine(message) {
+  const statusLine = elements?.hud?.pvpStatus?.querySelector('.status-line');
+  if (statusLine) {
+    statusLine.textContent = message;
+  }
+}
+
 function showPlayersList(players) {
-  elements.lists.players.innerHTML = '';
+  const list = elements?.lists?.players;
+  if (!list) return;
   const others = players.filter((player) => player.socketId !== state.socketId);
   if (!others.length) {
-    elements.lists.players.innerHTML =
-      '<li class="empty">No operators online. Stand by for reinforcements.</li>';
+    setPlayerListMessage(PVP_EMPTY_MESSAGE);
+    setPvpStatusLine(PVP_EMPTY_MESSAGE);
     return;
   }
+  list.innerHTML = '';
+  setPvpStatusLine(PVP_READY_MESSAGE);
   others.forEach((player) => {
-    const li = document.createElement('li');
-    li.dataset.socketId = player.socketId;
-    li.innerHTML = `
-      <span>${player.name}</span>
-      <span class="player-status ${player.status}">${player.status.replace('_', ' ')}</span>
-    `;
-    if (player.status === 'online') {
-      li.addEventListener('click', () => {
+    const row = document.createElement('li');
+    row.className = 'player-row';
+    row.dataset.socketId = player.socketId;
+
+    const label = document.createElement('span');
+    label.className = 'player-row__callsign';
+    label.textContent = player.name;
+
+    const connectButton = document.createElement('button');
+    connectButton.type = 'button';
+    connectButton.className = 'button primary small player-row__action';
+    connectButton.textContent = 'Connect';
+
+    if (player.status !== 'online') {
+      connectButton.disabled = true;
+      connectButton.classList.add('disabled');
+    } else {
+      connectButton.addEventListener('click', (event) => {
+        event.stopPropagation();
         socket.emit('createMatch', { opponentId: player.socketId });
         pushStatus(COPY.status.connectingToPlayer(player.name), 'info');
       });
-    } else {
-      li.classList.add('disabled');
     }
-    elements.lists.players.appendChild(li);
+
+    row.append(label, connectButton);
+    list.appendChild(row);
   });
+}
+
+function enterPvpLobby() {
+  const input = elements?.inputs?.playerName;
+  const enteredName = input?.value?.trim();
+  if (!state.playerName && !enteredName) {
+    if (elements?.hud?.homeStatus) {
+      elements.hud.homeStatus.textContent = 'Enter callsign to continue.';
+    }
+    playTone(SOUNDS.ALERT, 200);
+    return;
+  }
+  if (enteredName) {
+    state.playerName = enteredName;
+  }
+  if (elements?.hud?.homeStatus) {
+    elements.hud.homeStatus.textContent = '';
+  }
+  requestPlayerRegistration();
+  state.mode = GAME_MODES.PVP;
+  setPvpStatusLine(PVP_LOADING_MESSAGE);
+  setPlayerListMessage(PVP_LOADING_MESSAGE);
+  toggleModal('mode', false);
+  hideModePanel();
+  switchScreen(MODES.PVP);
+  socket.emit('requestPlayerList');
 }
 
 function showPostGameModal(title, message) {
@@ -1438,26 +1502,7 @@ function setupEventListeners() {
 
   if (elements?.buttons?.continue) {
     elements.buttons.continue.addEventListener('click', () => {
-      state.playerName = elements.inputs.playerName.value.trim();
-      if (!state.playerName) {
-        elements.hud.homeStatus.textContent = 'Enter callsign to continue.';
-        playTone(SOUNDS.ALERT, 200);
-        return;
-      }
-      fetch(`/api/saves/${encodeURIComponent(state.playerName)}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (!data) {
-            elements.hud.homeStatus.textContent = 'No saved operations found.';
-            playTone(SOUNDS.ALERT, 200);
-            return;
-          }
-          state.continuePayload = data;
-          loadSavedGame(data);
-        })
-        .catch(() => {
-          elements.hud.homeStatus.textContent = 'Unable to retrieve save data.';
-        });
+      enterPvpLobby();
     });
   }
 
@@ -1535,6 +1580,20 @@ function setupEventListeners() {
     });
   }
 
+  if (elements?.buttons?.pvpBack) {
+    elements.buttons.pvpBack.addEventListener('click', () => {
+      state.mode = null;
+      if (elements?.lists?.players) {
+        elements.lists.players.innerHTML = '';
+      }
+      setPvpStatusLine('Available human operators');
+      toggleModal('mode', false);
+      hideModePanel();
+      slideActionAreaTrackTo(0);
+      switchScreen(MODES.HOME);
+    });
+  }
+
   if (elements.header.menuToggle) {
     elements.header.menuToggle.addEventListener('click', (event) => {
       event.preventDefault();
@@ -1587,7 +1646,7 @@ socket.on('playerRegistered', ({ socketId }) => {
 });
 
 socket.on('playerList', (players) => {
-  if (state.mode !== GAME_MODES.PVP) return;
+  if (state.mode !== GAME_MODES.PVP && state.view !== MODES.PVP) return;
   showPlayersList(players);
 });
 
@@ -1628,6 +1687,15 @@ socket.on('diceTie', () => {
   pushStatus('Both operators rolled the same value. Roll again.', 'warning');
 });
 */
+
+socket.on('playerRegistered', ({ socketId }) => {
+  state.socketId = socketId;
+});
+
+socket.on('playerList', (players) => {
+  if (state.mode !== GAME_MODES.PVP && state.view !== MODES.PVP) return;
+  showPlayersList(players);
+});
 
 socket.on('turnStart', ({ currentTurn, order }) => {
   state.currentTurnSocket = currentTurn;
@@ -1802,6 +1870,7 @@ export function initializeApp(root = document) {
   state.attackSelection = null;
   syncAttackInterface();
   setupEventListeners();
+  switchScreen(MODES.HOME);
   slideActionAreaTrackTo(0);
 }
 
