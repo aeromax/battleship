@@ -13,7 +13,7 @@ const io = new Server(server, {
   },
 });
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 4001;
 const DATA_FILE = path.join(__dirname, '..', 'data', 'saves.json');
 
 app.use(express.json());

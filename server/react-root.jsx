@@ -6,12 +6,16 @@ const HomeScreen = () => (
       </div>
       <div className="flex-column action-area">
         <div className="flex-row action-area--track">
-          <div className="flex-column justify-center flex-gap-md action-area--panel action-area--buttons">
+          <div className="flex-row justify-center flex-gap-md action-area--panel action-area--buttons">
             <button id="newGameBtn" className="button primary large">
-              NEW DEPLOYMENT
+              <span class="material-symbols-outlined">
+                military_tech
+              </span> NEW DEPLOYMENT
             </button>
             <button id="loadLocalSaveBtn" className="button primary large">
-              RESUME SAVED OP
+              <span class="material-symbols-outlined">
+                save
+              </span> RESUME SAVED OP
             </button>
           </div>
           <div className="flex-column flex-around flex-gap-md action-area--panel action-area--callsign">
@@ -33,29 +37,28 @@ const HomeScreen = () => (
                   arrow_back
                 </span>
               </button>
-              <button id="startDeploymentBtn" className="col-span-10 button primary large">
+              <button id="startDeploymentBtn" className="col-span-10 button primary ">
                 continue
               </button>
             </div>
           </div>
           <div className="grid-12 action-area--panel action-area--game-mode">
-            <button id="cancelModeBtn" className="col-span-2 button secondary large">
+            <button id="cancelModeBtn" className="col-span-2 button secondary ">
               <span class="material-symbols-outlined">
                 arrow_back
               </span>
             </button>
-            <button id="startSoloBtn" className="col-span-5 button primary large" data-mode="solo">
-              solo sim <br />
-              <small>Practice against computer-controlled opposition.</small>
+            <button id="startSoloBtn" className="col-span-5 button primary " data-mode="solo">
+              Human vs. <br /> Computer
             </button>
-            <button id="continueBtn" className="col-span-5 button primary large" data-mode="pvp">
+            <button id="continueBtn" className="col-span-5 button primary " data-mode="pvp">
               tactical link <br />
-              <small>Link up with another operator over the GridOps network.</small>
+              <small>Play online with another human</small>
             </button>
           </div>
         </div>
       </div>
-      <div id="homeStatus" className="status-panel"></div>
+      <div id="homeStatus" className="align-stretch status-panel"></div>
     </div>
   </section>
 );
@@ -196,10 +199,7 @@ const SetupScreen = () => (
             </button>
           </div>
         </div>
-        <div className="panel status-panel">
-          <p>Deploy your fleet!</p>
-        </div>
-        <button id="readyBtn" className="primary disabled" disabled>
+        <button id="readyBtn" className="primary red disabled" disabled>
           Deploy!
         </button>
       </div>
