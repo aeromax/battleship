@@ -215,6 +215,64 @@ h1 {
   }
 }
 
+.pvp-lobby {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: fw.$spacing-md;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: fw.$spacing-sm;
+
+    h2 {
+      font-size: fw.$text-size-large;
+      letter-spacing: 0.2em;
+      margin: 0;
+    }
+  }
+}
+
+.player-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: fw.$spacing-sm;
+
+  .player-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: fw.$spacing-sm;
+    border-radius: fw.$radius-sm;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.02);
+    text-transform: uppercase;
+    font-size: 0.95rem;
+
+    &.empty {
+      justify-content: center;
+      color: rgba(255, 255, 255, 0.7);
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+    }
+  }
+
+  .player-row__callsign {
+    font-weight: 700;
+    flex: 1;
+  }
+
+  .player-row__action {
+    flex-shrink: 0;
+  }
+}
+
 .overlay-banner {
   position: fixed;
   inset: 0;

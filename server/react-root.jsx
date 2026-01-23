@@ -1,9 +1,10 @@
 const HomeScreen = () => (
-  <section id="homeScreen" className="flex-row justify-center align-center screen home active">
+  <section id="homeScreen" className="flex-row justify-center align-center screen home hidden">
     <div className="panel flex-column flex-between flex-gap-md justify-center align-center">
       <div className="panel-logo">
         <h1>GRID OPS</h1>
       </div>
+      <div id="homeStatus" className="align-stretch status-panel"></div>
       <div className="flex-column action-area">
         <div className="flex-row action-area--track">
           <div className="flex-row justify-center flex-gap-md action-area--panel action-area--buttons">
@@ -58,11 +59,30 @@ const HomeScreen = () => (
           </div>
         </div>
       </div>
-      <div id="homeStatus" className="align-stretch status-panel"></div>
+
     </div>
   </section>
 );
-
+const PvpScreen = () => (
+  <section id="pvpScreen" className="flex-row justify-center align-center screen home hidden">
+    <div className="panel flex-column flex-between flex-gap-md justify-center align-center">
+      <div className="panel-logo"></div>
+      <div className="pvp-lobby flex-column flex-gap-md">
+        <div className="flex-row flex-between align-center pvp-lobby__header">
+          <h2>Operator Lobby</h2>
+          <button id="pvpBackBtn" className="button secondary large">
+            <span class="material-symbols-outlined">arrow_back</span>
+            Back
+          </button>
+        </div>
+        <div id="pvpStatus" className="align-stretch status-panel">
+          <p className="status-line">Available human operators</p>
+          <ul id="playerList" className="player-list"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+);
 const AXIS_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 const AXIS_NUMBERS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const GRID_COORDINATES = AXIS_LETTERS.flatMap((letter) =>
@@ -254,9 +274,10 @@ function AppShell() {
       <OverlayBanner />
       <main className="screens flex justify-center align-center">
         <HomeScreen />
+        <PvpScreen />
         <SetupScreen />
         <GameScreen />
-        {/* <PostGameModal /> */}
+
       </main>
     </div>
   );
