@@ -13,7 +13,7 @@ const HomeScreen = () => (
                 military_tech
               </span> NEW DEPLOYMENT
             </button>
-            <button id="loadLocalSaveBtn" className="button primary large">
+            <button id="loadLocalSaveBtn" className="button primary large disabled">
               <span class="material-symbols-outlined">
                 save
               </span> RESUME SAVED OP
@@ -271,7 +271,7 @@ const GameScreen = () => {
       <div className="grid-12">
         <div className="col-span-12 top-rail flex-row flex-between flex-gap-md justify-start">
           <img className="command-logo" src="/assets/img/gridops_logo_h.png" alt="GridOps logo" />
-          <button id="save-campaign" class="button small">Save</button>
+          <button id="save-campaign" class="button small disabled">Save</button>
           <button id="abort-campaign" class="button small">Abort</button>
         </div>
         <div className="col-span-8 map-area">
