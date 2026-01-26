@@ -3,7 +3,15 @@ const path = require('path');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { v4: uuidv4 } = require('uuid');
+let cachedUuidV4;
+
+async function getUuidV4() {
+  if (!cachedUuidV4) {
+    const { v4 } = await import('uuid');
+    cachedUuidV4 = v4;
+  }
+  return cachedUuidV4;
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -111,7 +119,8 @@ function broadcastPlayerList() {
   io.emit('playerList', buildPlayerList());
 }
 
-function createGameRecord({ creatorId, opponentId }) {
+async function createGameRecord({ creatorId, opponentId }) {
+  const uuidv4 = await getUuidV4();
   const id = uuidv4();
   const createdAt = Date.now();
   const record = {
@@ -212,7 +221,7 @@ io.on('connection', (socket) => {
     socket.emit('playerList', buildPlayerList());
   });
 
-  socket.on('createMatch', ({ opponentId }) => {
+  socket.on('createMatch', async ({ opponentId }) => {
     const challenger = players.get(socket.id);
     const opponent = players.get(opponentId);
     if (!challenger || !opponent) {
@@ -223,7 +232,14 @@ io.on('connection', (socket) => {
       socket.emit('matchError', { message: 'Either player is busy.' });
       return;
     }
-    const game = createGameRecord({ creatorId: socket.id, opponentId });
+    let game;
+    try {
+      game = await createGameRecord({ creatorId: socket.id, opponentId });
+    } catch (err) {
+      console.error('Failed to create match record', err);
+      socket.emit('matchError', { message: 'Unable to start match.' });
+      return;
+    }
     challenger.status = 'in_game';
     opponent.status = 'in_game';
     challenger.currentGameId = game.id;
