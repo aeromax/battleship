@@ -62,6 +62,7 @@ const COPY = {
     roundLabel: (round) => `Round ${round}`,
     opponentReady: (label) => `${label} ready for battle.`,
     bothForcesDeployed: 'Both forces deployed. Roll to determine initiative.',
+    waitingForOpponent: (name = 'opponent') => `Waiting for ${name}...`,
     diceTie: 'Both operators rolled the same value. Roll again.',
     initiativePlayer: '→ You have the initiative. Strike when ready.',
     initiativeOpponent: (label) => `→ ${label}'s forces seize the first shot.`,
@@ -86,8 +87,17 @@ const COPY = {
     commandError: (message) => message || '⚠️ Command error encountered.',
     opponentDisconnected: '⚠️ Opponent disconnected. Mission aborted.',
     reconnectMultiplayer: '⚠️ Reconnect to multiplayer session via Tactical Link.',
+    matchRequestPrompt: (name) => `${name} would like to play with you!`,
+    playRequestRejected: (name) => `${name} has rejected your play request.`,
+    matchRequestCancelled: 'Play request cancelled.',
   },
 };
+
+const matchDialogState = {
+  incomingRequest: null,
+  outgoingRequest: null,
+};
+let outgoingRejectionTimer = null;
 
 function playSfx(path) {
   if (typeof Audio === 'undefined' || !path) {
@@ -269,6 +279,29 @@ function collectElements(root = document) {
     modals: {
       postGame: root.getElementById ? root.getElementById('postGameModal') : root.querySelector('#postGameModal'),
     },
+    dialogs: {
+      matchRequest: root.getElementById
+        ? root.getElementById('matchRequestModal')
+        : root.querySelector('#matchRequestModal'),
+      matchRequestMessage: root.getElementById
+        ? root.getElementById('matchRequestMessage')
+        : root.querySelector('#matchRequestMessage'),
+      matchConnecting: root.getElementById
+        ? root.getElementById('matchConnectingModal')
+        : root.querySelector('#matchConnectingModal'),
+      matchConnectingMessage: root.getElementById
+        ? root.getElementById('matchConnectingMessage')
+        : root.querySelector('#matchConnectingMessage'),
+      matchConnectingLoader: root.getElementById
+        ? root.getElementById('matchConnectingLoader')
+        : root.querySelector('#matchConnectingLoader'),
+      waitingForOpponent: root.getElementById
+        ? root.getElementById('waitingForOpponentModal')
+        : root.querySelector('#waitingForOpponentModal'),
+      waitingForOpponentMessage: root.getElementById
+        ? root.getElementById('waitingForOpponentMessage')
+        : root.querySelector('#waitingForOpponentMessage'),
+    },
     inputs: {
       playerName: root.getElementById ? root.getElementById('playerName') : root.querySelector('#playerName'),
     },
@@ -300,6 +333,12 @@ function collectElements(root = document) {
       abortMission: root.getElementById
         ? root.getElementById('abortMissionBtn')
         : root.querySelector('#abortMissionBtn'),
+      matchConfirm: root.getElementById
+        ? root.getElementById('matchConfirmBtn')
+        : root.querySelector('#matchConfirmBtn'),
+      matchDeny: root.getElementById
+        ? root.getElementById('matchDenyBtn')
+        : root.querySelector('#matchDenyBtn'),
     },
     lists: {
       unit: root.getElementById ? root.getElementById('unitList') : root.querySelector('#unitList'),
@@ -975,6 +1014,7 @@ function handleMenuKeydown(event) {
 function handleMenuAction(action) {
   switch (action) {
     case 'home':
+      hideWaitingForOpponentDialog();
       switchScreen(MODES.HOME);
       toggleModal('mode', false);
       toggleModal('postGame', false);
@@ -983,6 +1023,7 @@ function handleMenuAction(action) {
       elements?.buttons?.save?.click();
       break;
     case 'abort':
+      hideWaitingForOpponentDialog();
       if (state.mode === GAME_MODES.PVP && state.gameId) {
         socket.emit('cancelMatch');
       }
@@ -1136,6 +1177,11 @@ function showPlayersList(players) {
     } else {
       connectButton.addEventListener('click', (event) => {
         event.stopPropagation();
+        if (matchDialogState.outgoingRequest) {
+          pushStatus('Awaiting another operator response. Hold fire for now.', 'warning');
+          return;
+        }
+        showOutgoingMatchRequest(player.name, player.socketId);
         socket.emit('createMatch', { opponentId: player.socketId });
         pushStatus(COPY.status.connectingToPlayer(player.name), 'info');
       });
@@ -1146,7 +1192,96 @@ function showPlayersList(players) {
   });
 }
 
+function showIncomingMatchRequest({ challengerId, challengerName }) {
+  const dialog = elements?.dialogs?.matchRequest;
+  const message = elements?.dialogs?.matchRequestMessage;
+  if (!dialog || !message) return;
+  hideIncomingMatchRequest();
+  matchDialogState.incomingRequest = { challengerId, challengerName };
+  message.textContent = COPY.status.matchRequestPrompt(challengerName);
+  dialog.classList.remove('hidden');
+  pushStatus(COPY.status.matchRequestPrompt(challengerName), 'info');
+}
+
+function hideIncomingMatchRequest() {
+  const dialog = elements?.dialogs?.matchRequest;
+  if (dialog) {
+    dialog.classList.add('hidden');
+  }
+  matchDialogState.incomingRequest = null;
+}
+
+function showOutgoingMatchRequest(opponentName, opponentId) {
+  const dialog = elements?.dialogs?.matchConnecting;
+  const message = elements?.dialogs?.matchConnectingMessage;
+  const loader = elements?.dialogs?.matchConnectingLoader;
+  if (!dialog || !message) return;
+  if (outgoingRejectionTimer) {
+    window.clearTimeout(outgoingRejectionTimer);
+    outgoingRejectionTimer = null;
+  }
+  matchDialogState.outgoingRequest = { opponentId, opponentName };
+  message.textContent = COPY.status.connectingToPlayer(opponentName);
+  loader?.classList.remove('hidden');
+  dialog.classList.remove('hidden');
+}
+
+function hideOutgoingMatchRequest() {
+  const dialog = elements?.dialogs?.matchConnecting;
+  const loader = elements?.dialogs?.matchConnectingLoader;
+  if (dialog) {
+    dialog.classList.add('hidden');
+  }
+  loader?.classList.remove('hidden');
+  matchDialogState.outgoingRequest = null;
+  if (outgoingRejectionTimer) {
+    window.clearTimeout(outgoingRejectionTimer);
+    outgoingRejectionTimer = null;
+  }
+}
+
+function showOutgoingMatchRejection(opponentName) {
+  const message = elements?.dialogs?.matchConnectingMessage;
+  const loader = elements?.dialogs?.matchConnectingLoader;
+  if (!message) return;
+  message.textContent = COPY.status.playRequestRejected(opponentName);
+  loader?.classList.add('hidden');
+  if (outgoingRejectionTimer) {
+    window.clearTimeout(outgoingRejectionTimer);
+  }
+  outgoingRejectionTimer = window.setTimeout(() => {
+    hideOutgoingMatchRequest();
+  }, 2800);
+}
+
+function showWaitingForOpponentDialog(opponentName) {
+  const dialog = elements?.dialogs?.waitingForOpponent;
+  const message = elements?.dialogs?.waitingForOpponentMessage;
+  if (!dialog || !message) return;
+  const label = opponentName?.trim() || 'opponent';
+  message.textContent = COPY.status.waitingForOpponent(label);
+  dialog.classList.remove('hidden');
+}
+
+function hideWaitingForOpponentDialog() {
+  const dialog = elements?.dialogs?.waitingForOpponent;
+  if (dialog) {
+    dialog.classList.add('hidden');
+  }
+}
+
+function handleMatchResponse(accepted) {
+  const request = matchDialogState.incomingRequest;
+  if (!request) return;
+  socket.emit('respondMatchRequest', { accept: accepted });
+  hideIncomingMatchRequest();
+  if (!accepted) {
+    pushStatus(`Declined ${request.challengerName}'s request.`, 'warning');
+  }
+}
+
 function enterPvpLobby() {
+  hideWaitingForOpponentDialog();
   const input = elements?.inputs?.playerName;
   const enteredName = input?.value?.trim();
   if (!state.playerName && !enteredName) {
@@ -1223,6 +1358,7 @@ function populateAiBoard() {
 }
 
 function enterGameScreen() {
+  hideWaitingForOpponentDialog();
   resetRoundCounter();
   state.playerBoard = cloneBoard(state.placementBoard);
   switchScreen(MODES.GAME);
@@ -1274,6 +1410,7 @@ function handleReadyMultiplayer() {
     pieces: state.placedUnits,
   });
   pushStatus(COPY.status.deploymentTransmitted, 'info');
+  showWaitingForOpponentDialog(state.opponentName);
 }
 
 function handleReady() {
@@ -1550,6 +1687,13 @@ function setupEventListeners() {
     setupSoloSession();
   });
 
+  if (elements?.buttons?.matchConfirm) {
+    elements.buttons.matchConfirm.addEventListener('click', () => handleMatchResponse(true));
+  }
+  if (elements?.buttons?.matchDeny) {
+    elements.buttons.matchDeny.addEventListener('click', () => handleMatchResponse(false));
+  }
+
   if (elements?.buttons?.randomize) {
     elements.buttons.randomize.addEventListener('click', () => {
       playTone(SOUNDS.CLICK);
@@ -1636,11 +1780,8 @@ function setupEventListeners() {
   bindPlacementDragHandlers();
 }
 
-// function initializeSocketEvents() {
-// Temporarily disable socket glue until the UI catches up to this flow.
-// return;
 
-/*
+
 socket.on('playerRegistered', ({ socketId }) => {
   state.socketId = socketId;
 });
@@ -1650,51 +1791,68 @@ socket.on('playerList', (players) => {
   showPlayersList(players);
 });
 
-// socket.on('matchStarted', ({ gameId, opponentName }) => {
-//   toggleModal('mode', false);
-//   state.mode = GAME_MODES.PVP;
-//   resetPlacementBoard();
-//   state.gameId = gameId;
-//   state.opponentName = opponentName;
-//   state.attackHistory = new Set();
-//   state.attackResults = {};
-//   state.opponentAttackHistory = new Set();
-//   state.statusMessages = [];
-//   renderStatusFeed();
-//   setTurnBanner('Deploy your forces');
-//   state.attackSelection = null;
-//   syncAttackInterface();
-//   /* Dice controls paused for now.
-//   state.setupLocked = false;
-//   switchScreen(MODES.SETUP);
-//   socket.emit('joinGameRoom', { gameId });
-// });
+socket.on('matchRequest', (request) => {
+  if (state.mode !== GAME_MODES.PVP && state.view !== MODES.PVP) return;
+  showIncomingMatchRequest(request);
+});
+
+socket.on('matchRejected', ({ playerName }) => {
+  showOutgoingMatchRejection(playerName);
+  pushStatus(COPY.status.playRequestRejected(playerName), 'warning');
+});
+
+socket.on('matchRequestCancelled', () => {
+  hideIncomingMatchRequest();
+  hideOutgoingMatchRequest();
+  pushStatus(COPY.status.matchRequestCancelled, 'warning');
+});
+
+socket.on('matchStarted', ({ gameId, opponentName }) => {
+  hideIncomingMatchRequest();
+  hideOutgoingMatchRequest();
+  state.mode = GAME_MODES.PVP;
+  state.gameId = gameId;
+  state.opponentName = opponentName;
+  state.attackHistory = new Set();
+  state.attackResults = {};
+  state.opponentAttackHistory = new Set();
+  state.playerBoard = createEmptyBoard();
+  state.aiBoard = createEmptyBoard();
+  state.setupLocked = false;
+  state.dieComplete = false;
+  state.playerTurn = false;
+  state.gameStarted = false;
+  state.attackSelection = null;
+  state.currentTurnSocket = null;
+  state.roundNumber = 0;
+  state.roundActive = false;
+  state.statusMessages = [];
+  state.continuePayload = null;
+  state.awaitingSave = false;
+  state.draggingUnit = null;
+  resetPlacementBoard();
+  renderStatusFeed();
+  setTurnBanner('Deploy your forces');
+  syncAttackInterface();
+  toggleModal('mode', false);
+  toggleModal('postGame', false);
+  switchScreen(MODES.SETUP);
+  pushStatus('Play request accepted. Deploy your fleet.', 'success');
+});
 
 socket.on('playerReady', ({ socketId }) => {
-  if (socketId !== state.socketId) {
-    pushStatus(COPY.status.opponentReady(getOpponentLabel('Enemy')), 'info');
+  if (socketId === state.socketId) {
+    return;
   }
+  pushStatus(COPY.status.opponentReady(getOpponentLabel('Opponent')), 'info');
 });
 
 socket.on('setupComplete', () => {
-  pushStatus(COPY.status.bothForcesDeployed, 'info');
-  state.setupLocked = true;
+  hideWaitingForOpponentDialog();
+  pushStatus(COPY.status.bothForcesDeployed, 'success');
+  setTurnBanner('Awaiting orders...');
   enterGameScreen();
-});
-
-/* Dice roll handshake disabled for now.
-socket.on('diceTie', () => {
-  pushStatus('Both operators rolled the same value. Roll again.', 'warning');
-});
-*/
-
-socket.on('playerRegistered', ({ socketId }) => {
-  state.socketId = socketId;
-});
-
-socket.on('playerList', (players) => {
-  if (state.mode !== GAME_MODES.PVP && state.view !== MODES.PVP) return;
-  showPlayersList(players);
+  syncAttackInterface();
 });
 
 socket.on('turnStart', ({ currentTurn, order }) => {
@@ -1804,6 +1962,7 @@ socket.on('saved', () => {
 });
 
 socket.on('matchError', ({ message }) => {
+  hideOutgoingMatchRequest();
   pushStatus(COPY.status.commandError(message), 'danger');
 });
 

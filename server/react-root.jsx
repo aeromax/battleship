@@ -177,6 +177,39 @@ const OverlayBanner = () => {
   );
 };
 
+const MatchRequestDialog = () => (
+  <div id="matchRequestModal" className="modal hidden" role="dialog" aria-modal="true">
+    <div className="modal-content match-request">
+      <p id="matchRequestMessage" className="modal-message"></p>
+      <div className="modal-actions flex-row flex-gap-sm justify-center">
+        <button id="matchConfirmBtn" type="button" className="button primary">
+          Confirm
+        </button>
+        <button id="matchDenyBtn" type="button" className="button secondary">
+          Deny
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+const MatchConnectingDialog = () => (
+  <div id="matchConnectingModal" className="modal hidden" role="status" aria-live="polite">
+    <div className="modal-content match-connecting flex-column align-center">
+      <div id="matchConnectingLoader" className="match-connecting__loader" aria-hidden="true"></div>
+      <p id="matchConnectingMessage" className="modal-message"></p>
+    </div>
+  </div>
+);
+
+const WaitingForOpponentDialog = () => (
+  <div id="waitingForOpponentModal" className="modal hidden" role="status" aria-live="polite">
+    <div className="modal-content waiting flex-column align-center">
+      <p id="waitingForOpponentMessage" className="modal-message"></p>
+    </div>
+  </div>
+);
+
 const AttackBoardPanel = () => (
   <div id="attack-board" className="panel attack-board-panel flex-column flex-between flex-gap-md">
     <MapGrid boardId="attackBoard" />
@@ -279,6 +312,9 @@ function AppShell() {
         <GameScreen />
 
       </main>
+      <MatchRequestDialog />
+      <MatchConnectingDialog />
+      <WaitingForOpponentDialog />
     </div>
   );
 }

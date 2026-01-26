@@ -102,6 +102,38 @@ app.get(/^\/(?!api)(?!socket\.io).*/, (req, res, next) => {
 
 const players = new Map();
 const games = new Map();
+const pendingMatchRequests = new Map();
+
+function hasPendingRequestFrom(challengerId) {
+  for (const request of pendingMatchRequests.values()) {
+    if (request.challengerId === challengerId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function removePendingMatchRequest(opponentId) {
+  const request = pendingMatchRequests.get(opponentId);
+  if (request) {
+    pendingMatchRequests.delete(opponentId);
+  }
+  return request;
+}
+
+function cancelPendingMatchRequestsForSocket(socketId) {
+  const entries = [];
+  pendingMatchRequests.forEach((request, targetId) => {
+    if (targetId === socketId || request.challengerId === socketId) {
+      entries.push({ targetId, request });
+    }
+  });
+  entries.forEach(({ targetId, request }) => {
+    pendingMatchRequests.delete(targetId);
+    const notifyId = targetId === socketId ? request.challengerId : targetId;
+    io.to(notifyId).emit('matchRequestCancelled');
+  });
+}
 
 function buildPlayerList() {
   const list = [];
@@ -180,6 +212,7 @@ function serializeGame(record) {
 }
 
 function resetGameIfIncomplete(socketId) {
+  cancelPendingMatchRequestsForSocket(socketId);
   const player = players.get(socketId);
   if (!player?.currentGameId) {
     return;
@@ -221,35 +254,88 @@ io.on('connection', (socket) => {
     socket.emit('playerList', buildPlayerList());
   });
 
-  socket.on('createMatch', async ({ opponentId }) => {
+  socket.on('createMatch', ({ opponentId }) => {
     const challenger = players.get(socket.id);
     const opponent = players.get(opponentId);
     if (!challenger || !opponent) {
       socket.emit('matchError', { message: 'Opponent unavailable.' });
       return;
     }
+    if (socket.id === opponentId) {
+      socket.emit('matchError', { message: 'Cannot challenge yourself.' });
+      return;
+    }
     if (challenger.status !== 'online' || opponent.status !== 'online') {
       socket.emit('matchError', { message: 'Either player is busy.' });
       return;
     }
-    let game;
-    try {
-      game = await createGameRecord({ creatorId: socket.id, opponentId });
-    } catch (err) {
-      console.error('Failed to create match record', err);
-      socket.emit('matchError', { message: 'Unable to start match.' });
+    if (pendingMatchRequests.has(opponentId)) {
+      socket.emit('matchError', { message: 'Opponent already has a pending request.' });
+      return;
+    }
+    if (hasPendingRequestFrom(socket.id)) {
+      socket.emit('matchError', { message: 'You already have a pending match request.' });
+      return;
+    }
+    pendingMatchRequests.set(opponentId, {
+      challengerId: socket.id,
+      challengerName: challenger.name,
+    });
+    io.to(opponentId).emit('matchRequest', {
+      challengerId: socket.id,
+      challengerName: challenger.name,
+    });
+  });
+
+  socket.on('respondMatchRequest', async ({ accept }) => {
+    const request = removePendingMatchRequest(socket.id);
+    if (!request) {
+      socket.emit('matchError', { message: 'No pending match request.' });
+      return;
+    }
+    const challenger = players.get(request.challengerId);
+    const opponent = players.get(socket.id);
+    if (!challenger || !opponent) {
+      socket.emit('matchError', { message: 'Match request no longer valid.' });
+      if (challenger) {
+        io.to(challenger.socketId).emit('matchError', { message: 'Match request no longer valid.' });
+      }
+      return;
+    }
+    if (!accept) {
+      io.to(challenger.socketId).emit('matchRejected', { playerName: opponent.name });
       return;
     }
     challenger.status = 'in_game';
     opponent.status = 'in_game';
+    challenger.currentGameId = null;
+    opponent.currentGameId = null;
+    players.set(challenger.socketId, challenger);
+    players.set(opponent.socketId, opponent);
+    let game;
+    try {
+      game = await createGameRecord({
+        creatorId: challenger.socketId,
+        opponentId: opponent.socketId,
+      });
+    } catch (err) {
+      console.error('Failed to create match record', err);
+      challenger.status = 'online';
+      opponent.status = 'online';
+      players.set(challenger.socketId, challenger);
+      players.set(opponent.socketId, opponent);
+      io.to(challenger.socketId).emit('matchError', { message: 'Unable to start match.' });
+      socket.emit('matchError', { message: 'Unable to start match.' });
+      return;
+    }
     challenger.currentGameId = game.id;
     opponent.currentGameId = game.id;
-    players.set(socket.id, challenger);
-    players.set(opponentId, opponent);
-    [socket.id, opponentId].forEach((id) => {
+    players.set(challenger.socketId, challenger);
+    players.set(opponent.socketId, opponent);
+    [challenger.socketId, opponent.socketId].forEach((id) => {
       io.to(id).emit('matchStarted', {
         gameId: game.id,
-        opponentName: id === socket.id ? opponent.name : challenger.name,
+        opponentName: id === challenger.socketId ? opponent.name : challenger.name,
       });
     });
     broadcastPlayerList();
