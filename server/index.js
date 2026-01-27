@@ -369,7 +369,19 @@ io.on('connection', (socket) => {
     io.to(game.id).emit('playerReady', { socketId: socket.id });
     const allReady = Object.values(game.players).every((p) => p.ready);
     if (allReady) {
+      if (!Array.isArray(game.order) || game.order.length === 0) {
+        const playerIds = Object.keys(game.players);
+        game.order = playerIds.sort(() => Math.random() - 0.5);
+        game.currentTurn = game.order[0] || null;
+      }
       io.to(game.id).emit('setupComplete');
+      if (game.currentTurn) {
+        io.to(game.id).emit('turnStart', {
+          currentTurn: game.currentTurn,
+          order: game.order,
+        });
+      }
+      io.to(game.id).emit('gameState', serializeGame(game));
     }
   });
 
@@ -522,12 +534,14 @@ function resolveAttack({ opponent, coordinate }) {
       destroyedUnit = unitRecord.name;
     }
   }
+  const hit = Boolean(cell.occupant);
   const allUnits = board.units || [];
-  const victory = allUnits.length > 0 && allUnits.every((unit) =>
-    unit.coordinates.every((coord) => board.cells[coord]?.hit)
-  );
+  const victory =
+    hit &&
+    allUnits.length > 0 &&
+    allUnits.every((unit) => unit.coordinates.every((coord) => board.cells[coord]?.hit));
   return {
-    hit: true,
+    hit,
     coordinate: normalized,
     destroyedUnit,
     victory,
