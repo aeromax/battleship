@@ -4,7 +4,12 @@ const HomeScreen = () => (
       <div className="panel-logo">
         <h1>GRID OPS</h1>
       </div>
-      <div id="homeStatus" className="align-stretch status-panel"></div>
+      <div id="homeStatus" className="align-stretch status-panel">
+        <span id="homeStatusMessage" className="status-line"></span>
+        <span id="homeStatusOnlineCount" className="status-line" aria-live="polite">
+          Retrieving operator availability...
+        </span>
+      </div>
       <div className="flex-column action-area">
         <div className="flex-row action-area--track">
           <div className="flex-row justify-center flex-gap-md action-area--panel action-area--buttons">

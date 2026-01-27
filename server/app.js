@@ -2,6 +2,9 @@ import { ROWS, COLUMNS, MODES, GAME_MODES, DIFFICULTIES, SOUNDS } from './game_s
 import { MAX_UNITS, AVAILABLE_UNITS, UNIT_IMAGES } from './vehicles.js';
 
 const socket = io();
+socket.on('connect', () => {
+  socket.emit('requestPlayerList');
+});
 const LOCAL_SAVE_KEY = 'gridops-local-saves';
 let selectedLocalSave = null;
 
@@ -145,6 +148,8 @@ function animateCell(cell, type) {
 
 let elements = null;
 let menuOpen = false;
+let latestPlayerList = [];
+let hasPlayerListData = false;
 let dragPreviewCells = [];
 
 function syncAttackInterface() {
@@ -360,6 +365,12 @@ function collectElements(root = document) {
       statusFeed: root.getElementById ? root.getElementById('statusFeed') : root.querySelector('#statusFeed'),
       turnBanner: root.getElementById ? root.getElementById('turnBanner') : root.querySelector('#turnBanner'),
       homeStatus: root.getElementById ? root.getElementById('homeStatus') : root.querySelector('#homeStatus'),
+      homeStatusMessage: root.getElementById
+        ? root.getElementById('homeStatusMessage')
+        : root.querySelector('#homeStatusMessage'),
+      homeStatusOnlineCount: root.getElementById
+        ? root.getElementById('homeStatusOnlineCount')
+        : root.querySelector('#homeStatusOnlineCount'),
       pvpStatus: root.getElementById ? root.getElementById('pvpStatus') : root.querySelector('#pvpStatus'),
       postGameTitle: root.getElementById ? root.getElementById('postGameTitle') : root.querySelector('#postGameTitle'),
       postGameMessage: root.getElementById
@@ -476,16 +487,15 @@ function persistLocalSave(playerName, payload) {
 }
 
 function handleLocalSaveLoad() {
-  if (!elements?.hud?.homeStatus) return;
   if (!selectedLocalSave) {
-    elements.hud.homeStatus.textContent = 'Select a local save to resume.';
+    setHomeStatusMessage('Select a local save to resume.');
     playTone(SOUNDS.ALERT, 200);
     return;
   }
   const saves = readLocalSaves();
   const entry = saves[selectedLocalSave];
   if (!entry?.payload) {
-    elements.hud.homeStatus.textContent = 'Selected save is unavailable.';
+    setHomeStatusMessage('Selected save is unavailable.');
     playTone(SOUNDS.ALERT, 200);
     return;
   }
@@ -536,15 +546,11 @@ function handleNewDeploymentStart() {
   const value = elements.inputs.playerName.value.trim();
   state.playerName = value;
   if (!state.playerName) {
-    if (elements?.hud?.homeStatus) {
-      elements.hud.homeStatus.textContent = 'Enter callsign to proceed.';
-    }
+    setHomeStatusMessage('Enter callsign to proceed.');
     playTone(SOUNDS.ALERT, 200);
     return false;
   }
-  if (elements?.hud?.homeStatus) {
-    elements.hud.homeStatus.textContent = '';
-  }
+  setHomeStatusMessage('');
   requestPlayerRegistration();
   state.mode = null;
   showModePanel();
@@ -1129,6 +1135,34 @@ const PVP_LOADING_MESSAGE = 'Scanning for available operators...';
 const PVP_EMPTY_MESSAGE = 'No operators online. Stand by for reinforcements.';
 const PVP_READY_MESSAGE = 'Select an operator to connect.';
 
+function setHomeStatusMessage(message = '') {
+  if (elements?.hud?.homeStatusMessage) {
+    elements.hud.homeStatusMessage.textContent = message || '';
+  }
+}
+
+function updateHomeStatusOnlinePlayers(players = []) {
+  if (Array.isArray(players)) {
+    latestPlayerList = players;
+    hasPlayerListData = true;
+  }
+  if (!hasPlayerListData || !elements?.hud?.homeStatusOnlineCount) return;
+  const onlinePlayers = latestPlayerList.filter((player) => player.status === 'online');
+  const ownSocketId = state.socketId || null;
+  const availableOperators = ownSocketId
+    ? onlinePlayers.filter((player) => player.socketId !== ownSocketId).length
+    : onlinePlayers.length;
+  let message;
+  if (availableOperators > 0) {
+    message = `${availableOperators} operator${availableOperators === 1 ? '' : 's'} online and available.`;
+  } else if (onlinePlayers.length > 0) {
+    message = 'You are the only operator online right now.';
+  } else {
+    message = 'No operators online at the moment.';
+  }
+  elements.hud.homeStatusOnlineCount.textContent = message;
+}
+
 function setPlayerListMessage(message) {
   const list = elements?.lists?.players;
   if (!list) return;
@@ -1285,18 +1319,14 @@ function enterPvpLobby() {
   const input = elements?.inputs?.playerName;
   const enteredName = input?.value?.trim();
   if (!state.playerName && !enteredName) {
-    if (elements?.hud?.homeStatus) {
-      elements.hud.homeStatus.textContent = 'Enter callsign to continue.';
-    }
+    setHomeStatusMessage('Enter callsign to continue.');
     playTone(SOUNDS.ALERT, 200);
     return;
   }
   if (enteredName) {
     state.playerName = enteredName;
   }
-  if (elements?.hud?.homeStatus) {
-    elements.hud.homeStatus.textContent = '';
-  }
+  setHomeStatusMessage('');
   requestPlayerRegistration();
   state.mode = GAME_MODES.PVP;
   setPvpStatusLine(PVP_LOADING_MESSAGE);
@@ -1784,9 +1814,13 @@ function setupEventListeners() {
 
 socket.on('playerRegistered', ({ socketId }) => {
   state.socketId = socketId;
+  if (hasPlayerListData) {
+    updateHomeStatusOnlinePlayers(latestPlayerList);
+  }
 });
 
 socket.on('playerList', (players) => {
+  updateHomeStatusOnlinePlayers(players);
   if (state.mode !== GAME_MODES.PVP && state.view !== MODES.PVP) return;
   showPlayersList(players);
 });
@@ -2031,6 +2065,9 @@ export function initializeApp(root = document) {
   setupEventListeners();
   switchScreen(MODES.HOME);
   slideActionAreaTrackTo(0);
+  if (hasPlayerListData) {
+    updateHomeStatusOnlinePlayers(latestPlayerList);
+  }
 }
 
 if (typeof window !== 'undefined') {
