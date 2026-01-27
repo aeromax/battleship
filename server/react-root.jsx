@@ -264,14 +264,7 @@ const SetupScreen = () => (
     </div>
   </section>
 );
-const GameScreen = () => {
-  React.useEffect(() => {
-    window.setTimeout(() => {
-      window.GridOps?.showOverlayBanner('YOUR TURN!', 2400);
-    }, 0);
-  }, []);
-
-  return (
+const GameScreen = () => (
     <section id="gameScreen" className="flex-row justify-center align-center screen hidden">
       <div className="grid-12">
         <div className="col-span-12 top-rail flex-row flex-between flex-gap-md justify-start">
@@ -290,8 +283,7 @@ const GameScreen = () => {
         </div>
       </div>
     </section>
-  );
-};
+);
 
 
 

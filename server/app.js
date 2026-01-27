@@ -1484,6 +1484,21 @@ function setTurnBanner(message) {
   elements.hud.turnBanner.textContent = message;
 }
 
+function showOverlayBanner(message, duration = 2400) {
+  if (typeof window === 'undefined') return;
+  window.GridOps?.showOverlayBanner?.(message, duration);
+}
+
+function possessiveLabel(label) {
+  if (!label) return 'their';
+  const trimmed = label.trim();
+  if (!trimmed) return 'their';
+  if (trimmed.toLowerCase().endsWith('s')) {
+    return `${trimmed}'`;
+  }
+  return `${trimmed}'s`;
+}
+
 function requestPlayerRegistration() {
   if (!state.playerName) return;
   socket.emit('registerPlayer', { name: state.playerName });
@@ -1763,6 +1778,9 @@ function establishInitiative() {
     ? COPY.status.initiativePlayer
     : COPY.status.initiativeOpponent(opponentLabel);
   setTurnBanner(playerStarts ? 'Your turn!' : 'Opponent turn');
+  if (playerStarts) {
+    showOverlayBanner('Your turn!');
+  }
   pushStatus(initiativeMessage, playerStarts ? 'success' : 'warning');
   syncAttackInterface();
   startRoundIfNeeded();
@@ -1896,6 +1914,7 @@ async function finalizePlayerAttack() {
       pushStatus(COPY.status.directHit(coordinate), 'success');
       if (result.destroyed) {
         pushStatus(COPY.status.enemyUnitDestroyed(opponentLabel, result.destroyed), 'success');
+        showOverlayBanner(`You destroyed ${possessiveLabel(opponentLabel)} ${result.destroyed}!`);
       }
       if (result.victory) {
         pushStatus(COPY.status.allHostilesNeutralized, 'success');
@@ -1907,9 +1926,9 @@ async function finalizePlayerAttack() {
         removeLocalSave(state.playerName);
         return;
       }
-    } else {
-      pushStatus(COPY.status.attackUnsuccessfulAt(coordinate), 'info');
-    }
+  } else {
+    pushStatus(COPY.status.attackUnsuccessfulAt(coordinate), 'info');
+  }
     state.playerTurn = false;
     syncAttackInterface();
     endRound();
@@ -1980,6 +1999,7 @@ async function aiTakeTurn() {
     pushStatus(COPY.status.opponentHit(opponentLabel, targetLabel, coordinate), 'danger');
     if (result.destroyed) {
       pushStatus(COPY.status.unitDestroyed(result.destroyed), 'danger');
+      showOverlayBanner(`Your ${result.destroyed} has been destroyed!`);
     }
     if (result.victory) {
       setTurnBanner('Mission failed.');
@@ -1995,6 +2015,7 @@ async function aiTakeTurn() {
   state.attackSelection = null;
   syncAttackInterface();
   setTurnBanner('Your turn!');
+  showOverlayBanner('Your turn!');
   scheduleLocalAutoSave();
 }
 
@@ -2275,6 +2296,7 @@ socket.on('turnStart', ({ currentTurn, order }) => {
   }
   if (state.playerTurn) {
     startRoundIfNeeded();
+    showOverlayBanner('Your turn!');
   } else {
     endRound();
   }
@@ -2300,6 +2322,7 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
         pushStatus(COPY.status.directHit(coordinate), 'success');
         if (result.destroyedUnit) {
           pushStatus(COPY.status.enemyUnitDestroyed(opponentLabel, result.destroyedUnit), 'success');
+          showOverlayBanner(`You destroyed ${possessiveLabel(opponentLabel)} ${result.destroyedUnit}!`);
         }
       } else {
         pushStatus(COPY.status.attackUnsuccessful, 'info');
@@ -2319,6 +2342,7 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
         );
         if (resultBoard.destroyed) {
           pushStatus(COPY.status.unitDestroyed(resultBoard.destroyed), 'danger');
+          showOverlayBanner(`Your ${resultBoard.destroyed} has been destroyed!`);
         }
       } else {
         pushStatus(COPY.status.opponentAttackUnsuccessful(opponentLabel), 'success');
@@ -2352,6 +2376,7 @@ socket.on('gameState', (payload) => {
     state.playerTurn = payload.currentTurn === state.socketId;
     if (state.playerTurn) {
       startRoundIfNeeded();
+      showOverlayBanner('Your turn!');
     } else {
       endRound();
     }
@@ -2413,6 +2438,9 @@ function loadSavedGame(data) {
     renderAttackBoard();
     renderStatusFeed();
     setTurnBanner(state.playerTurn ? 'Your turn!' : 'Opponent turn');
+    if (state.playerTurn) {
+      showOverlayBanner('Your turn!');
+    }
     state.attackSelection = null;
     resetRoundCounter();
     if (state.playerTurn) {

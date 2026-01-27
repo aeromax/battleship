@@ -468,6 +468,7 @@ h1 {
   background: rgba(0, 0, 0, 0);
 }
 .overlay-banner--visible {
+  visibility: visible;
   opacity: 1;
   transform: scale(1);
   background: rgba(0, 0, 0, 0.45);
