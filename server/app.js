@@ -151,6 +151,10 @@ let menuOpen = false;
 let latestPlayerList = [];
 let hasPlayerListData = false;
 let dragPreviewCells = [];
+let touchDragPreviewEl = null;
+let touchDragPreviewSource = null;
+let touchDragActive = false;
+let globalDragEndHandlersBound = false;
 
 function syncAttackInterface() {
   if (!elements) return;
@@ -175,6 +179,7 @@ function clearDragPreview() {
     }
   });
   dragPreviewCells = [];
+  elements.boards.placement.removeAttribute('data-drag-preview');
 }
 
 function applyDragPreview(coords) {
@@ -187,6 +192,175 @@ function applyDragPreview(coords) {
       cell.classList.add('drag-preview');
     }
   });
+}
+
+function previewPlacementCells(coords) {
+  applyDragPreview(coords);
+  const placement = elements?.boards?.placement;
+  if (!placement) return;
+  if (coords && coords.length) {
+    placement.dataset.dragPreview = 'true';
+  } else {
+    placement.removeAttribute('data-drag-preview');
+  }
+}
+
+function findCellAtPoint(x, y) {
+  const element = document.elementFromPoint(x, y);
+  if (!element || typeof element.closest !== 'function') {
+    return null;
+  }
+  return element.closest('.cell');
+}
+
+function ensureTouchDragPreview() {
+  if (touchDragPreviewEl) {
+    return touchDragPreviewEl;
+  }
+  if (typeof document === 'undefined' || !document.body) {
+    return null;
+  }
+  const preview = document.createElement('div');
+  preview.id = 'touchDragPreview';
+  preview.className = 'touch-drag-preview';
+  document.body.appendChild(preview);
+  touchDragPreviewEl = preview;
+  return preview;
+}
+
+function showTouchDragPreview(sourceElement) {
+  const preview = ensureTouchDragPreview();
+  if (!preview || !sourceElement) {
+    return;
+  }
+  preview.innerHTML = '';
+  const clone = sourceElement.cloneNode(true);
+  clone.classList.add('touch-drag-preview__unit');
+  clone.style.pointerEvents = 'none';
+  preview.appendChild(clone);
+  touchDragPreviewSource = sourceElement;
+  preview.classList.add('touch-drag-preview--visible');
+}
+function hideTouchDragPreview() {
+  if (!touchDragPreviewEl) {
+    return;
+  }
+  touchDragPreviewEl.classList.remove('touch-drag-preview--visible');
+  touchDragPreviewEl.innerHTML = '';
+  touchDragPreviewSource = null;
+}
+
+function positionTouchDragPreview(point) {
+  if (!touchDragPreviewEl || !touchDragActive || !point) {
+    return;
+  }
+  touchDragPreviewEl.style.left = `${point.clientX}px`;
+  touchDragPreviewEl.style.top = `${point.clientY}px`;
+}
+
+function previewPlacementFromPoint(point) {
+  if (!point) {
+    clearDragPreview();
+    return null;
+  }
+  const cell = findCellAtPoint(point.clientX, point.clientY);
+  if (!cell || !cell.dataset.coord) {
+    clearDragPreview();
+    return null;
+  }
+  if (!state.draggingUnit) {
+    clearDragPreview();
+    return null;
+  }
+  const previewCoords = canPlaceUnit(
+    state.placementBoard,
+    state.draggingUnit,
+    cell.dataset.coord,
+    state.orientation,
+  );
+  if (!previewCoords) {
+    clearDragPreview();
+    return null;
+  }
+  previewPlacementCells(previewCoords);
+  return cell;
+}
+
+function handlePlacementPointerMove(event) {
+  if (event.pointerType === 'mouse') return;
+  if (state.setupLocked || !state.draggingUnit) return;
+  positionTouchDragPreview(event);
+  const cell = previewPlacementFromPoint(event);
+  if (cell) {
+    event.preventDefault();
+  }
+}
+
+function handlePlacementPointerEnd(event) {
+  if (event.pointerType === 'mouse') {
+    touchDragActive = false;
+    return;
+  }
+  if (state.setupLocked || !state.draggingUnit) {
+    touchDragActive = false;
+    return;
+  }
+  const cell = previewPlacementFromPoint(event);
+  if (cell?.dataset?.coord) {
+    attemptPlaceSelectedUnit(cell.dataset.coord);
+  }
+  deactivateTouchDrag();
+}
+
+function handlePlacementPointerCancel(event) {
+  if (event.pointerType === 'mouse') return;
+  if (!touchDragActive) return;
+  deactivateTouchDrag();
+}
+
+function deactivateTouchDrag() {
+  touchDragActive = false;
+  if (state.draggingUnit) {
+    state.draggingUnit = null;
+  }
+  hideTouchDragPreview();
+  clearDragPreview();
+}
+
+function handlePlacementTouchMove(event) {
+  if (state.setupLocked || !state.draggingUnit) return;
+  const touch = event.touches?.[0];
+  if (!touch) {
+    clearDragPreview();
+    return;
+  }
+  positionTouchDragPreview(touch);
+  const cell = previewPlacementFromPoint(touch);
+  if (cell) {
+    event.preventDefault();
+  }
+}
+
+function handlePlacementTouchEnd(event) {
+  if (state.setupLocked || !state.draggingUnit) {
+    touchDragActive = false;
+    return;
+  }
+  const touch = event.changedTouches?.[0];
+  if (!touch) {
+    deactivateTouchDrag();
+    return;
+  }
+  const cell = previewPlacementFromPoint(touch);
+  if (cell?.dataset?.coord) {
+    attemptPlaceSelectedUnit(cell.dataset.coord);
+  }
+  deactivateTouchDrag();
+}
+
+function handlePlacementTouchCancel(event) {
+  if (!touchDragActive) return;
+  deactivateTouchDrag();
 }
 
 function handlePlacementDragOver(event) {
@@ -203,7 +377,7 @@ function handlePlacementDragOver(event) {
     clearDragPreview();
     return;
   }
-  applyDragPreview(previewCoords);
+  previewPlacementCells(previewCoords);
 }
 
 function handlePlacementDragLeave(event) {
@@ -230,12 +404,46 @@ function handlePlacementDrop(event) {
   state.draggingUnit = null;
 }
 
+function handleGlobalPointerMove(event) {
+  if (event.pointerType === 'mouse') return;
+  if (!touchDragActive) return;
+  positionTouchDragPreview(event);
+  previewPlacementFromPoint(event);
+  event.preventDefault();
+}
+
+function handleGlobalTouchMove(event) {
+  if (!touchDragActive) return;
+  const touch = event.touches?.[0];
+  if (!touch) return;
+  positionTouchDragPreview(touch);
+  previewPlacementFromPoint(touch);
+  event.preventDefault();
+}
+
+function bindGlobalDragEndHandlers() {
+  if (globalDragEndHandlersBound || typeof window === 'undefined') return;
+  globalDragEndHandlersBound = true;
+  if (window.PointerEvent) {
+    window.addEventListener('pointermove', handleGlobalPointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePlacementPointerEnd);
+    window.addEventListener('pointercancel', handlePlacementPointerCancel);
+  } else {
+    window.addEventListener('touchmove', handleGlobalTouchMove, { passive: false });
+    window.addEventListener('touchend', handlePlacementTouchEnd, { passive: false });
+    window.addEventListener('touchcancel', handlePlacementTouchCancel);
+  }
+}
+
 function bindPlacementDragHandlers() {
   const placement = elements?.boards?.placement;
   if (!placement) return;
   placement.addEventListener('dragover', handlePlacementDragOver);
   placement.addEventListener('dragleave', handlePlacementDragLeave);
   placement.addEventListener('drop', handlePlacementDrop);
+  placement.addEventListener('touchmove', handlePlacementTouchMove, { passive: false });
+  placement.addEventListener('pointermove', handlePlacementPointerMove, { passive: false });
+  bindGlobalDragEndHandlers();
 }
 
 function highlightUnitSelection(unitName) {
@@ -248,15 +456,41 @@ function highlightUnitSelection(unitName) {
 function bindVehicleDragSources() {
   const icons = document.querySelectorAll('.unit-item');
   if (!icons.length) return;
+  const startDraggingUnit = (unitName) => {
+    const unit = AVAILABLE_UNITS.find((item) => item.name === unitName);
+    if (!unit) {
+      return null;
+    }
+    state.selectedUnit = unit;
+    state.draggingUnit = unit;
+    highlightUnitSelection(unit.name);
+    return unit;
+  };
   icons.forEach((icon) => {
     const unitName = icon.dataset.unit;
     if (!unitName) return;
-    icon.addEventListener('dragstart', (event) => {
-      const unit = AVAILABLE_UNITS.find((item) => item.name === unitName);
+    const handleTouchStart = (event) => {
+      event.preventDefault();
+      const unit = startDraggingUnit(unitName);
       if (!unit) return;
-      state.selectedUnit = unit;
-      state.draggingUnit = unit;
-      highlightUnitSelection(unit.name);
+      touchDragActive = true;
+      showTouchDragPreview(icon);
+      positionTouchDragPreview(event.touches?.[0] || event);
+    };
+    const handlePointerStart = (event) => {
+      if (event.pointerType === 'mouse') {
+        return;
+      }
+      event.preventDefault();
+      const unit = startDraggingUnit(unitName);
+      if (!unit) return;
+      touchDragActive = true;
+      showTouchDragPreview(icon);
+      positionTouchDragPreview(event);
+    };
+    icon.addEventListener('dragstart', (event) => {
+      const unit = startDraggingUnit(unitName);
+      if (!unit) return;
       const transfer = event.dataTransfer;
       if (transfer) {
         transfer.setData('text/plain', unitName);
@@ -269,6 +503,8 @@ function bindVehicleDragSources() {
       state.draggingUnit = null;
       clearDragPreview();
     });
+    icon.addEventListener('touchstart', handleTouchStart);
+    icon.addEventListener('pointerdown', handlePointerStart);
   });
 }
 
