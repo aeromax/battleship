@@ -96,6 +96,8 @@ const COPY = {
     matchRequestPrompt: (name) => `${name} would like to play with you!`,
     playRequestRejected: (name) => `${name} has rejected your play request.`,
     matchRequestCancelled: 'Play request cancelled.',
+    pvpEmptyMessage: 'No operators online. Stand by for contact.',
+    pvpReadyMessage: 'Select an operator to connect.',
   },
 };
 
@@ -1504,10 +1506,6 @@ function requestPlayerRegistration() {
   socket.emit('registerPlayer', { name: state.playerName });
 }
 
-const PVP_LOADING_MESSAGE = 'Scanning for available operators...';
-const PVP_EMPTY_MESSAGE = 'No operators online. Stand by for reinforcements.';
-const PVP_READY_MESSAGE = 'Select an operator to connect.';
-
 function setHomeStatusMessage(message = '') {
   if (elements?.hud?.homeStatusMessage) {
     elements.hud.homeStatusMessage.textContent = message || '';
@@ -1546,24 +1544,24 @@ function setPlayerListMessage(message) {
   list.appendChild(row);
 }
 
-function setPvpStatusLine(message) {
-  const statusLine = elements?.hud?.pvpStatus?.querySelector('.status-line');
-  if (statusLine) {
-    statusLine.textContent = message;
-  }
-}
+// function setPvpStatusLine(message) {
+//   const statusLine = elements?.hud?.pvpStatus?.querySelector('.status-line');
+//   if (statusLine) {
+//     statusLine.textContent = message;
+//   }
+// }
 
 function showPlayersList(players) {
   const list = elements?.lists?.players;
   if (!list) return;
   const others = players.filter((player) => player.socketId !== state.socketId);
   if (!others.length) {
-    setPlayerListMessage(PVP_EMPTY_MESSAGE);
-    setPvpStatusLine(PVP_EMPTY_MESSAGE);
+    // setPlayerListMessage(COPY.status.pvpEmptyMessage);
+    // setPvpStatusLine(COPY.status.pvpEmptyMessage);
     return;
   }
   list.innerHTML = '';
-  setPvpStatusLine(PVP_READY_MESSAGE);
+  // setPvpStatusLine(COPY.status.pvpReadyMessage);
   others.forEach((player) => {
     const row = document.createElement('li');
     row.className = 'player-row';
@@ -1702,8 +1700,8 @@ function enterPvpLobby() {
   setHomeStatusMessage('');
   requestPlayerRegistration();
   state.mode = GAME_MODES.PVP;
-  setPvpStatusLine(PVP_LOADING_MESSAGE);
-  setPlayerListMessage(PVP_LOADING_MESSAGE);
+  // setPvpStatusLine(COPY.status.pvpEmptyMessage);
+  setPlayerListMessage(COPY.status.pvpEmptyMessage);
   toggleModal('mode', false);
   hideModePanel();
   switchScreen(MODES.PVP);
@@ -1926,9 +1924,9 @@ async function finalizePlayerAttack() {
         removeLocalSave(state.playerName);
         return;
       }
-  } else {
-    pushStatus(COPY.status.attackUnsuccessfulAt(coordinate), 'info');
-  }
+    } else {
+      pushStatus(COPY.status.attackUnsuccessfulAt(coordinate), 'info');
+    }
     state.playerTurn = false;
     syncAttackInterface();
     endRound();
@@ -2151,7 +2149,7 @@ function setupEventListeners() {
       if (elements?.lists?.players) {
         elements.lists.players.innerHTML = '';
       }
-      setPvpStatusLine('Available human operators');
+      // setPvpStatusLine('Available human operators');
       toggleModal('mode', false);
       hideModePanel();
       slideActionAreaTrackTo(0);
@@ -2201,8 +2199,6 @@ function setupEventListeners() {
 
   bindPlacementDragHandlers();
 }
-
-
 
 socket.on('playerRegistered', ({ socketId }) => {
   state.socketId = socketId;

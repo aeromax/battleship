@@ -120,12 +120,12 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: fw.$spacing-sm;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: fw.$radius-lg;
+  // background: rgba(0, 0, 0, 0.35);
+  // border: 1px solid rgba(255, 255, 255, 0.12);
+  // border-radius: fw.$radius-lg;
   padding: fw.$spacing-sm;
   color: fw.$text;
-  box-shadow: fw.$elevation-soft;
+  // box-shadow: fw.$elevation-soft;
 
   .status-feed {
     max-height: 220px;

@@ -4,12 +4,6 @@ const HomeScreen = () => (
       <div className="panel-logo">
         <h1>GRID OPS</h1>
       </div>
-      <div id="homeStatus" className="align-stretch status-panel">
-        <span id="homeStatusMessage" className="status-line"></span>
-        <span id="homeStatusOnlineCount" className="status-line" aria-live="polite">
-          Retrieving operator availability...
-        </span>
-      </div>
       <div className="flex-column action-area">
         <div className="flex-row action-area--track">
           <div className="flex-row justify-center flex-gap-md action-area--panel action-area--buttons">
@@ -18,11 +12,11 @@ const HomeScreen = () => (
                 military_tech
               </span> NEW DEPLOYMENT
             </button>
-            <button id="loadLocalSaveBtn" className="button primary large disabled">
+            {/* <button id="loadLocalSaveBtn" className="button primary large disabled">
               <span class="material-symbols-outlined">
                 save
               </span> RESUME SAVED OP
-            </button>
+            </button> */}
           </div>
           <div className="flex-column flex-around flex-gap-md action-area--panel action-area--callsign">
             <div className="form-field-group">
@@ -64,7 +58,9 @@ const HomeScreen = () => (
           </div>
         </div>
       </div>
-
+      <div id="homeStatus" className="align-stretch status-panel">
+        <span id="homeStatusMessage" className="status-line"></span>
+      </div>
     </div>
   </section>
 );
@@ -74,14 +70,12 @@ const PvpScreen = () => (
       <div className="panel-logo"></div>
       <div className="pvp-lobby flex-column flex-gap-md">
         <div className="flex-row flex-between align-center pvp-lobby__header">
-          <h2>Operator Lobby</h2>
           <button id="pvpBackBtn" className="button secondary large">
             <span class="material-symbols-outlined">arrow_back</span>
             Back
           </button>
         </div>
         <div id="pvpStatus" className="align-stretch status-panel">
-          <p className="status-line">Available human operators</p>
           <ul id="playerList" className="player-list"></ul>
         </div>
       </div>
@@ -265,24 +259,24 @@ const SetupScreen = () => (
   </section>
 );
 const GameScreen = () => (
-    <section id="gameScreen" className="flex-row justify-center align-center screen hidden">
-      <div className="grid-12">
-        <div className="col-span-12 top-rail flex-row flex-between flex-gap-md justify-start">
-          <img className="command-logo" src="/assets/img/gridops_logo_h.png" alt="GridOps logo" />
-          <button id="save-campaign" class="button small disabled">Save</button>
-          <button id="abort-campaign" class="button small">Abort</button>
-        </div>
-        <div className="col-span-8 map-area">
-          <MapGrid boardId="playerBoard" label="Player Board" />
-        </div>
-        <div className="col-span-4 flex-column flex-between flex-gap-md right-rail">
-          <AttackBoardPanel />
-          <div className="panel status-panel flex-grow flex-column flex-gap-sm">
-            <div id="statusFeed" className="status-feed"></div>
-          </div>
+  <section id="gameScreen" className="flex-row justify-center align-center screen hidden">
+    <div className="grid-12">
+      <div className="col-span-12 top-rail flex-row flex-between flex-gap-md justify-start">
+        <img className="command-logo" src="/assets/img/gridops_logo_h.png" alt="GridOps logo" />
+        <button id="save-campaign" class="button small disabled">Save</button>
+        <button id="abort-campaign" class="button small">Abort</button>
+      </div>
+      <div className="col-span-8 map-area">
+        <MapGrid boardId="playerBoard" label="Player Board" />
+      </div>
+      <div className="col-span-4 flex-column flex-between flex-gap-md right-rail">
+        <AttackBoardPanel />
+        <div className="panel status-panel flex-grow flex-column flex-gap-sm">
+          <div id="statusFeed" className="status-feed"></div>
         </div>
       </div>
-    </section>
+    </div>
+  </section>
 );
 
 
