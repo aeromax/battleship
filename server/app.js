@@ -7,6 +7,9 @@ socket.on('connect', () => {
 });
 const LOCAL_SAVE_KEY = 'gridops-local-saves';
 let selectedLocalSave = null;
+let autoSaveTimer = null;
+const AUTO_SAVE_DEBOUNCE_MS = 250;
+let beforeUnloadGuardBound = false;
 
 const state = {
   view: MODES.HOME,
@@ -629,6 +632,29 @@ function hasLocalStorage() {
   return typeof window !== 'undefined' && Boolean(window.localStorage);
 }
 
+function shouldBlockUnload() {
+  return Boolean(state.gameStarted) || Boolean(state.setupLocked) || Boolean(state.gameId);
+}
+
+function updateBeforeUnloadGuard() {
+  if (typeof window === 'undefined') return;
+  if (shouldBlockUnload()) {
+    if (!beforeUnloadGuardBound) {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      beforeUnloadGuardBound = true;
+    }
+  } else if (beforeUnloadGuardBound) {
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+    beforeUnloadGuardBound = false;
+  }
+}
+
+function handleBeforeUnload(event) {
+  if (!shouldBlockUnload()) return;
+  event.preventDefault();
+  event.returnValue = '';
+}
+
 function readLocalSaves() {
   if (!hasLocalStorage()) return {};
   try {
@@ -638,6 +664,18 @@ function readLocalSaves() {
     console.error('Failed to read local saves', err);
     return {};
   }
+}
+
+function refreshLocalSaveButtonState() {
+  const button = elements?.buttons?.loadLocalSave;
+  if (!button) return;
+  const saves = readLocalSaves();
+  const hasAny = Object.keys(saves).length > 0;
+  const enteredName = elements?.inputs?.playerName?.value?.trim();
+  const hasMatchingSave = enteredName ? Boolean(saves[enteredName]) : false;
+  const enable = hasAny && (hasMatchingSave || selectedLocalSave || Object.keys(saves).length === 1);
+  button.disabled = !enable;
+  button.classList.toggle('disabled', !enable);
 }
 
 function updateLocalSaveSelection(entry) {
@@ -720,25 +758,102 @@ function persistLocalSave(playerName, payload) {
   };
   window.localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify(saves));
   renderLocalSaveList();
+  refreshLocalSaveButtonState();
+}
+
+function removeLocalSave(playerName) {
+  if (!playerName || !hasLocalStorage()) return;
+  const saves = readLocalSaves();
+  if (!saves[playerName]) return;
+  delete saves[playerName];
+  window.localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify(saves));
+  renderLocalSaveList();
+  refreshLocalSaveButtonState();
+}
+
+function resolveLocalSaveName() {
+  const saves = readLocalSaves();
+  const enteredName = elements?.inputs?.playerName?.value?.trim();
+  if (enteredName && saves[enteredName]) {
+    return enteredName;
+  }
+  if (selectedLocalSave && saves[selectedLocalSave]) {
+    return selectedLocalSave;
+  }
+  const names = Object.keys(saves);
+  if (names.length === 1) {
+    return names[0];
+  }
+  return null;
 }
 
 function handleLocalSaveLoad() {
-  if (!selectedLocalSave) {
-    setHomeStatusMessage('Select a local save to resume.');
+  const targetName = resolveLocalSaveName();
+  if (!targetName) {
+    setHomeStatusMessage('Enter callsign to resume.');
     playTone(SOUNDS.ALERT, 200);
     return;
   }
   const saves = readLocalSaves();
-  const entry = saves[selectedLocalSave];
+  const entry = saves[targetName];
   if (!entry?.payload) {
     setHomeStatusMessage('Selected save is unavailable.');
     playTone(SOUNDS.ALERT, 200);
     return;
   }
-  elements.inputs.playerName.value = selectedLocalSave;
-  state.playerName = selectedLocalSave;
+  if (elements?.inputs?.playerName) {
+    elements.inputs.playerName.value = targetName;
+  }
+  state.playerName = targetName;
   state.continuePayload = entry.payload;
   loadSavedGame(entry.payload);
+}
+
+function buildSoloSavePayload() {
+  return {
+    mode: 'solo',
+    difficulty: state.difficulty,
+    player: {
+      board: state.playerBoard,
+      turn: state.playerTurn,
+      attackHistory: Array.from(state.attackHistory),
+    },
+    ai: {
+      board: state.aiBoard,
+      shots: Array.from(state.aiShots),
+    },
+    status: state.statusMessages,
+  };
+}
+
+function canAutoSaveSolo() {
+  return (
+    state.mode === GAME_MODES.SOLO &&
+    state.gameStarted &&
+    Boolean(state.playerBoard) &&
+    Boolean(state.aiBoard) &&
+    Boolean(state.playerName)
+  );
+}
+
+function scheduleLocalAutoSave() {
+  if (!canAutoSaveSolo() || !hasLocalStorage()) return;
+  if (autoSaveTimer) {
+    window.clearTimeout(autoSaveTimer);
+  }
+  autoSaveTimer = window.setTimeout(() => {
+    autoSaveTimer = null;
+    persistLocalSave(state.playerName, buildSoloSavePayload());
+  }, AUTO_SAVE_DEBOUNCE_MS);
+}
+
+function flushLocalAutoSave() {
+  if (!canAutoSaveSolo() || !hasLocalStorage()) return;
+  if (autoSaveTimer) {
+    window.clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+  }
+  persistLocalSave(state.playerName, buildSoloSavePayload());
 }
 
 
@@ -1260,11 +1375,13 @@ function handleMenuAction(action) {
       switchScreen(MODES.HOME);
       toggleModal('mode', false);
       toggleModal('postGame', false);
+      updateBeforeUnloadGuard();
       break;
     case 'save':
       elements?.buttons?.save?.click();
       break;
-    case 'abort':
+    case 'abort': {
+      const shouldClearLocalSave = state.mode === GAME_MODES.SOLO;
       hideWaitingForOpponentDialog();
       if (state.mode === GAME_MODES.PVP && state.gameId) {
         socket.emit('cancelMatch');
@@ -1293,12 +1410,17 @@ function handleMenuAction(action) {
       renderAttackBoard();
       setTurnBanner('Awaiting orders...');
       syncAttackInterface();
+      updateBeforeUnloadGuard();
 
       toggleModal('postGame', false);
       toggleModal('mode', false);
       switchScreen(MODES.HOME);
       resetPlacementBoard();
+      if (shouldClearLocalSave) {
+        removeLocalSave(state.playerName);
+      }
       break;
+    }
     default:
       break;
   }
@@ -1601,6 +1723,7 @@ function setupSoloSession() {
   syncAttackInterface();
   state.setupLocked = false;
   switchScreen(MODES.SETUP);
+  updateBeforeUnloadGuard();
 }
 
 function populateAiBoard() {
@@ -1655,6 +1778,8 @@ function beginSoloCombat() {
   state.attackSelection = null;
   establishInitiative();
   syncAttackInterface();
+  scheduleLocalAutoSave();
+  updateBeforeUnloadGuard();
 }
 
 function handleReadySolo() {
@@ -1677,6 +1802,7 @@ function handleReadyMultiplayer() {
   });
   pushStatus(COPY.status.deploymentTransmitted, 'info');
   showWaitingForOpponentDialog(state.opponentName);
+  updateBeforeUnloadGuard();
 }
 
 function handleReady() {
@@ -1778,6 +1904,7 @@ async function finalizePlayerAttack() {
         endRound();
         syncAttackInterface();
         showPostGameModal('Mission Success', 'You have secured the battlefield.');
+        removeLocalSave(state.playerName);
         return;
       }
     } else {
@@ -1787,6 +1914,7 @@ async function finalizePlayerAttack() {
     syncAttackInterface();
     endRound();
     setTurnBanner('Opponent turn...');
+    scheduleLocalAutoSave();
     window.setTimeout(aiTakeTurn, 1000);
   } else if (state.mode === GAME_MODES.PVP) {
     if (!state.gameId) return;
@@ -1856,6 +1984,7 @@ async function aiTakeTurn() {
     if (result.victory) {
       setTurnBanner('Mission failed.');
       showPostGameModal('Mission Failed', `${opponentLabel} forces overwhelmed your sector.`);
+      removeLocalSave(state.playerName);
       return;
     }
   } else {
@@ -1866,6 +1995,7 @@ async function aiTakeTurn() {
   state.attackSelection = null;
   syncAttackInterface();
   setTurnBanner('Your turn!');
+  scheduleLocalAutoSave();
 }
 
 function setupEventListeners() {
@@ -1888,6 +2018,9 @@ function setupEventListeners() {
         event.preventDefault();
         elements.buttons.startDeployment.click();
       }
+    });
+    elements.inputs.playerName.addEventListener('input', () => {
+      refreshLocalSaveButtonState();
     });
   }
 
@@ -1987,6 +2120,7 @@ function setupEventListeners() {
       playTone(SOUNDS.CLICK);
       toggleModal('mode', false);
       switchScreen(MODES.HOME);
+      updateBeforeUnloadGuard();
     });
   }
 
@@ -2001,6 +2135,7 @@ function setupEventListeners() {
       hideModePanel();
       slideActionAreaTrackTo(0);
       switchScreen(MODES.HOME);
+      updateBeforeUnloadGuard();
     });
   }
 
@@ -2108,6 +2243,7 @@ socket.on('matchStarted', ({ gameId, opponentName }) => {
   toggleModal('postGame', false);
   switchScreen(MODES.SETUP);
   pushStatus('Play request accepted. Deploy your fleet.', 'success');
+  updateBeforeUnloadGuard();
 });
 
 socket.on('playerReady', ({ socketId }) => {
@@ -2207,6 +2343,7 @@ socket.on('gameOver', ({ winner, winnerName }) => {
       ? `You have neutralized ${state.opponentName || 'the opponent'}.`
       : `${winnerName || 'Opponent'} secured the battlefield.`,
   );
+  updateBeforeUnloadGuard();
 });
 
 socket.on('gameState', (payload) => {
@@ -2244,6 +2381,7 @@ socket.on('opponentLeft', () => {
   state.attackSelection = null;
   syncAttackInterface();
   showPostGameModal('Mission Interrupted', 'Opponent left the battlefield.');
+  updateBeforeUnloadGuard();
 });
 
 function loadSavedGame(data) {
@@ -2266,6 +2404,7 @@ function loadSavedGame(data) {
       }
     });
     state.aiShots = new Set(data.ai.shots || []);
+    state.opponentAttackHistory = new Set(data.ai.shots || []);
     state.statusMessages = data.status || [];
     state.gameStarted = true;
     state.setupLocked = true;
@@ -2281,6 +2420,8 @@ function loadSavedGame(data) {
     }
     syncAttackInterface();
     switchScreen(MODES.GAME);
+    scheduleLocalAutoSave();
+    updateBeforeUnloadGuard();
   } else if (data.mode === 'pvp') {
     pushStatus(COPY.status.reconnectMultiplayer, 'info');
   }
@@ -2301,6 +2442,9 @@ export function initializeApp(root = document) {
   setupEventListeners();
   switchScreen(MODES.HOME);
   slideActionAreaTrackTo(0);
+  renderLocalSaveList();
+  refreshLocalSaveButtonState();
+  updateBeforeUnloadGuard();
   if (hasPlayerListData) {
     updateHomeStatusOnlinePlayers(latestPlayerList);
   }
@@ -2309,4 +2453,7 @@ export function initializeApp(root = document) {
 if (typeof window !== 'undefined') {
   window.GridOps = window.GridOps || {};
   window.GridOps.initializeApp = initializeApp;
+  window.addEventListener('pagehide', () => {
+    flushLocalAutoSave();
+  });
 }
