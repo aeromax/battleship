@@ -269,7 +269,7 @@ const GameScreen = () => (
       <div className="col-span-8 map-area">
         <MapGrid boardId="playerBoard" label="Player Board" />
       </div>
-      <div className="col-span-4 flex-column flex-between flex-gap-md right-rail">
+      <div className="col-span-4 flex-column flex-gap-md right-rail">
         <AttackBoardPanel />
         <div className="panel status-panel flex-grow flex-column flex-gap-sm">
           <div id="statusFeed" className="status-feed"></div>
