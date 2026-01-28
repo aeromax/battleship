@@ -8,12 +8,12 @@ const HomeScreen = () => (
         <div className="flex-row action-area--track">
           <div className="flex-row justify-center flex-gap-md action-area--panel action-area--buttons">
             <button id="newGameBtn" className="button primary large">
-              <span class="material-symbols-outlined">
+              <span className="material-symbols-outlined">
                 military_tech
               </span> NEW DEPLOYMENT
             </button>
             {/* <button id="loadLocalSaveBtn" className="button primary large disabled">
-              <span class="material-symbols-outlined">
+              <span className="material-symbols-outlined">
                 save
               </span> RESUME SAVED OP
             </button> */}
@@ -33,7 +33,7 @@ const HomeScreen = () => (
             </div>
             <div className="flex-grow grid-12">
               <button id="cancelCallsignBtn" className="col-span-2 button secondary large">
-                <span class="material-symbols-outlined">
+                <span className="material-symbols-outlined">
                   arrow_back
                 </span>
               </button>
@@ -44,7 +44,7 @@ const HomeScreen = () => (
           </div>
           <div className="grid-12 action-area--panel action-area--game-mode">
             <button id="cancelModeBtn" className="col-span-2 button secondary ">
-              <span class="material-symbols-outlined">
+              <span className="material-symbols-outlined">
                 arrow_back
               </span>
             </button>
@@ -71,7 +71,7 @@ const PvpScreen = () => (
       <div className="pvp-lobby flex-column flex-gap-md">
         <div className="flex-row flex-between align-center pvp-lobby__header">
           <button id="pvpBackBtn" className="button secondary large">
-            <span class="material-symbols-outlined">arrow_back</span>
+            <span className="material-symbols-outlined">arrow_back</span>
             Back
           </button>
         </div>
@@ -88,29 +88,39 @@ const GRID_COORDINATES = AXIS_LETTERS.flatMap((letter) =>
   AXIS_NUMBERS.map((number) => `${letter}${number}`),
 );
 
-const MapGrid = ({ boardId }) => (
+const MapGrid = ({ boardId, showAxis = true, showCellCoords = false }) => (
   <div className="map-shell">
-    <div className="axis axis-top">
-      {AXIS_LETTERS.map((letter) => (
-        <span key={letter}>{letter}</span>
-      ))}
-    </div>
-    <div className="axis axis-side">
-      {AXIS_NUMBERS.map((number) => (
-        <span key={number}>{number}</span>
-      ))}
-    </div>
-    <div className="board-shell">
-      <div id={boardId} className="grid board board-primary">
-        {GRID_COORDINATES.map((coord) => (
-          <div
-            key={coord}
-            className="cell"
-            data-coord={coord}
-            aria-label={`Empty sector ${coord}`}
-          />
+    <div
+      id={boardId}
+      className={`grid board board-primary${showAxis ? ' board--with-axis' : ''}`}
+    >
+      {showAxis && <span className="axis-cell axis-corner" />}
+      {showAxis &&
+        AXIS_LETTERS.map((letter) => (
+          <span key={`axis-top-${letter}`} className="axis-cell axis-top-cell">
+            {letter}
+          </span>
         ))}
-      </div>
+      {AXIS_NUMBERS.map((number) => (
+        <React.Fragment key={`row-${number}`}>
+          {showAxis && (
+            <span className="axis-cell axis-side-cell">{number}</span>
+          )}
+          {AXIS_LETTERS.map((letter) => {
+            const coord = `${letter}${number}`;
+            return (
+              <div
+                key={coord}
+                className="cell"
+                data-coord={coord}
+                aria-label={`Empty sector ${coord}`}
+              >
+                {showCellCoords && <span className="cell-coord">{coord}</span>}
+              </div>
+            );
+          })}
+        </React.Fragment>
+      ))}
     </div>
   </div>
 );
@@ -211,7 +221,7 @@ const WaitingForOpponentDialog = () => (
 
 const AttackBoardPanel = () => (
   <div id="attack-board" className="panel attack-board-panel flex-column flex-between flex-gap-md">
-    <MapGrid boardId="attackBoard" />
+    <MapGrid boardId="attackBoard" showAxis={false} showCellCoords />
     <button id="fireBtn" className="large align-stretch red disabled" disabled>
       Fire!
     </button>
@@ -221,23 +231,23 @@ const AttackBoardPanel = () => (
 const SetupScreen = () => (
   <section id="setupScreen" className="flex-row justify-center align-center screen hidden">
     <div className="grid-12">
-      <div className="col-span-12 top-rail">
-        <img className="command-logo" src="/assets/img/gridops_logo_h.png" alt="GridOps logo" />
-      </div>
       <div className="col-span-8 map-area">
         <MapGrid boardId="placementBoard" label="Deployment Grid" />
       </div>
-      <div className="col-span-4 flex-column flex-between flex-gap-md right-rail">
+      <div className="col-span-4 flex-column flex-gap-md right-rail">
+        <div className="col-span-12 top-rail">
+          <img className="command-logo" src="/assets/img/gridops_logo_h.png" alt="GridOps logo" />
+        </div>
         <div className="panel vehicles-panel flex-column flex-around align-center flex-gap-md">
           <div id="unitList" className="unit-list flex-column align-stretch flex-gap-sm"></div>
           <div className="orientation-toggle flex-row flex-between align-stretch  align-center">
-            <div class="panel--head"><span>Orientation</span></div>
+            <div className="panel--head"><span>Orientation</span></div>
             <div className="flex flex-around flex-gap-sm">
               <button data-orientation="horizontal" className="button small secondary selected">
-                <span class="material-symbols-outlined">width</span>
+                <span className="material-symbols-outlined">width</span>
               </button>
               <button data-orientation="vertical" className="button small secondary">
-                <span class="material-symbols-outlined">height</span>
+                <span className="material-symbols-outlined">height</span>
               </button>
             </div>
           </div>
@@ -261,19 +271,18 @@ const SetupScreen = () => (
 const GameScreen = () => (
   <section id="gameScreen" className="flex-row justify-center align-center screen hidden">
     <div className="grid-12">
-      <div className="col-span-12 top-rail flex-row flex-between flex-gap-md justify-start">
-        <img className="command-logo" src="/assets/img/gridops_logo_h.png" alt="GridOps logo" />
-        <button id="save-campaign" class="button small disabled">Save</button>
-        <button id="abort-campaign" class="button small">Abort</button>
-      </div>
       <div className="col-span-8 map-area">
         <MapGrid boardId="playerBoard" label="Player Board" />
       </div>
       <div className="col-span-4 flex-column flex-gap-md right-rail">
+        <div className="col-span-12 top-rail flex-row flex-between flex-gap-md justify-start">
+          <img className="command-logo" src="/assets/img/gridops_logo_h.png" alt="GridOps logo" />
+        </div>
         <AttackBoardPanel />
         <div className="panel status-panel flex-grow flex-column flex-gap-sm">
           <div id="statusFeed" className="status-feed"></div>
         </div>
+        <button id="abort-campaign" className="button small">Abort</button>
       </div>
     </div>
   </section>

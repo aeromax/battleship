@@ -161,6 +161,7 @@ let touchDragPreviewSource = null;
 let touchDragActive = false;
 let globalDragEndHandlersBound = false;
 
+
 function syncAttackInterface() {
   if (!elements) return;
   const overlayActive = Boolean(state.playerTurn && state.dieComplete);
@@ -516,6 +517,7 @@ function bindVehicleDragSources() {
 function collectElements(root = document) {
   return {
     appRoot: root.getElementById ? root.getElementById('app') : root.querySelector('#app'),
+    screensRoot: root.querySelector ? root.querySelector('.screens') : null,
     screens: {
       home: root.getElementById ? root.getElementById('homeScreen') : root.querySelector('#homeScreen'),
       pvp: root.getElementById ? root.getElementById('pvpScreen') : root.querySelector('#pvpScreen'),
