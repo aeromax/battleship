@@ -1145,6 +1145,10 @@ function renderPlacementBoard() {
       } else {
         cell.setAttribute('aria-label', `Empty sector ${coord}`);
       }
+      const coordLabel = document.createElement('span');
+      coordLabel.className = 'cell-coord';
+      coordLabel.textContent = coord;
+      cell.appendChild(coordLabel);
       placement.appendChild(cell);
     });
   });
@@ -1214,6 +1218,10 @@ function renderPlayerBoard() {
       } else if (cell.hit) {
         cellEl.classList.add('miss');
       }
+      const coordLabel = document.createElement('span');
+      coordLabel.className = 'cell-coord';
+      coordLabel.textContent = coord;
+      cellEl.appendChild(coordLabel);
       playerBoardEl.appendChild(cellEl);
     });
   });
@@ -1238,6 +1246,10 @@ function renderAttackBoard() {
           state.aiBoard.cells[coord].occupant ? 'hit' : 'miss',
         );
       }
+      const coordLabel = document.createElement('span');
+      coordLabel.className = 'cell-coord';
+      coordLabel.textContent = coord;
+      cellEl.appendChild(coordLabel);
       attack.appendChild(cellEl);
     });
   });

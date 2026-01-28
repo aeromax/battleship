@@ -100,16 +100,18 @@ h1 {
 .hidden {
   display: none !important;
 }
-
-.panel-logo {
+.command-logo {
   background-image: url("/assets/img/gridops_logo_v.png");
   background-position: center center;
   background-size: contain;
   background-repeat: no-repeat;
-  width: 100%;
-  height: 200px;
+  display: inline-block;
 }
-
+#homeScreen {
+  .command-logo {
+    height: 200px;
+  }
+}
 .action-area {
   overflow: hidden;
 }
@@ -488,14 +490,13 @@ h1 {
 
 .unit-list {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   padding-right: fw.$spacing-sm;
 }
 
 .unit-item {
   padding: fw.$spacing-sm;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: fw.$radius-md;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   gap: fw.$spacing-md;
@@ -515,12 +516,9 @@ h1 {
   .unit-thumb-wrapper {
     width: 48px;
     height: 48px;
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.4);
 
     img {
       max-width: 40px;
@@ -548,9 +546,12 @@ h1 {
   }
 }
 .top-rail {
-  height: 70px;
-  & img {
+  height: 50px;
+  & .command-logo {
+    background-image: url("/assets/img/gridops_logo_h.png");
+    float: left;
     height: 100%;
+    background-position: left;
   }
 }
 .flex {
@@ -718,12 +719,13 @@ button {
 }
 
 .map-shell {
-  width: 100%;
+  width: auto;
   display: flex;
   justify-content: center;
   align-items: stretch;
   max-width: 100%;
   max-height: 100%;
+  height: 100%;
   aspect-ratio: 1 / 1;
 }
 
@@ -731,7 +733,6 @@ button {
   width: 100%;
   height: 100%;
   min-height: 0;
-  display: flex;
   justify-content: center;
 }
 
@@ -747,6 +748,7 @@ button {
   grid-template-rows: repeat(9, minmax(0, 1fr));
   gap: 0;
   width: 100%;
+  height: 100%;
   border-radius: fw.$radius-lg;
   border: 2px solid rgba(fw.$color-secondary, 0.25);
   padding: fw.$spacing-xs;
@@ -756,9 +758,8 @@ button {
 }
 
 .board--with-axis {
-  --axis-size: clamp(1.1rem, 2vw, 1.6rem);
-  grid-template-columns: var(--axis-size) repeat(9, minmax(0, 1fr));
-  grid-template-rows: var(--axis-size) repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  grid-template-rows: repeat(10, minmax(0, 1fr));
 }
 
 .axis-cell {
@@ -810,7 +811,7 @@ button {
   position: absolute;
   top: 6%;
   left: 6%;
-  font-size: clamp(0.4rem, 1.1vw, 0.65rem);
+  font-size: fw.$text-size-small;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: rgba(fw.$color-secondary, 0.65);
@@ -852,7 +853,7 @@ button {
 
 #placementBoard {
   border-color: rgba(fw.$color-secondary, 0.6);
-
+  aspect-ratio: 1/1;
   --cell-gap: 2px;
 
   .cell {
@@ -925,7 +926,9 @@ button {
     border-color: rgba(255, 118, 77, 0.8);
     animation: hitPulse 0.6s ease-out;
   }
-
+  .cell-coord {
+    display: none;
+  }
   .cell.miss {
     box-shadow: inset 0px 0px 6px 9px rgba(0, 0, 0, 0.4);
     background-image: url("/assets/img/sprites/crater.png");

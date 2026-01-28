@@ -1,7 +1,7 @@
 const HomeScreen = () => (
   <section id="homeScreen" className="flex-row justify-center align-center screen home hidden">
     <div className="panel flex-column flex-between flex-gap-md justify-center align-center">
-      <div className="panel-logo">
+      <div className="command-logo">
         <h1>GRID OPS</h1>
       </div>
       <div className="flex-column action-area">
@@ -88,24 +88,14 @@ const GRID_COORDINATES = AXIS_LETTERS.flatMap((letter) =>
   AXIS_NUMBERS.map((number) => `${letter}${number}`),
 );
 
-const MapGrid = ({ boardId, showAxis = true, showCellCoords = false }) => (
+const MapGrid = ({ boardId, showAxis = false, showCellCoords = false }) => (
   <div className="map-shell">
     <div
       id={boardId}
-      className={`grid board board-primary${showAxis ? ' board--with-axis' : ''}`}
+      className="grid board board-primary"
     >
-      {showAxis && <span className="axis-cell axis-corner" />}
-      {showAxis &&
-        AXIS_LETTERS.map((letter) => (
-          <span key={`axis-top-${letter}`} className="axis-cell axis-top-cell">
-            {letter}
-          </span>
-        ))}
       {AXIS_NUMBERS.map((number) => (
         <React.Fragment key={`row-${number}`}>
-          {showAxis && (
-            <span className="axis-cell axis-side-cell">{number}</span>
-          )}
           {AXIS_LETTERS.map((letter) => {
             const coord = `${letter}${number}`;
             return (
@@ -124,7 +114,11 @@ const MapGrid = ({ boardId, showAxis = true, showCellCoords = false }) => (
     </div>
   </div>
 );
-
+const TopRail = ({ }) => (
+  <div className="col-span-12 top-rail flex-row flex-between flex-gap-md justify-start">
+    <div className="command-logo flex-grow" alt="GridOps logo" />
+  </div>
+);
 const OverlayBanner = () => {
   const [message, setMessage] = React.useState('');
   const [visible, setVisible] = React.useState(false);
@@ -232,12 +226,10 @@ const SetupScreen = () => (
   <section id="setupScreen" className="flex-row justify-center align-center screen hidden">
     <div className="grid-12">
       <div className="col-span-8 map-area">
-        <MapGrid boardId="placementBoard" label="Deployment Grid" />
+        <MapGrid boardId="placementBoard" label="Deployment Grid" showCellCoords />
       </div>
       <div className="col-span-4 flex-column flex-gap-md right-rail">
-        <div className="col-span-12 top-rail">
-          <img className="command-logo" src="/assets/img/gridops_logo_h.png" alt="GridOps logo" />
-        </div>
+        <TopRail />
         <div className="panel vehicles-panel flex-column flex-around align-center flex-gap-md">
           <div id="unitList" className="unit-list flex-column align-stretch flex-gap-sm"></div>
           <div className="orientation-toggle flex-row flex-between align-stretch  align-center">
@@ -266,18 +258,16 @@ const SetupScreen = () => (
         </button>
       </div>
     </div>
-  </section>
+  </section >
 );
 const GameScreen = () => (
   <section id="gameScreen" className="flex-row justify-center align-center screen hidden">
     <div className="grid-12">
       <div className="col-span-8 map-area">
-        <MapGrid boardId="playerBoard" label="Player Board" />
+        <MapGrid boardId="playerBoard" label="Player Board" showCellCoords />
       </div>
       <div className="col-span-4 flex-column flex-gap-md right-rail">
-        <div className="col-span-12 top-rail flex-row flex-between flex-gap-md justify-start">
-          <img className="command-logo" src="/assets/img/gridops_logo_h.png" alt="GridOps logo" />
-        </div>
+        <TopRail />
         <AttackBoardPanel />
         <div className="panel status-panel flex-grow flex-column flex-gap-sm">
           <div id="statusFeed" className="status-feed"></div>
