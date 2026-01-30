@@ -7,16 +7,11 @@ const HomeScreen = () => (
       <div className="flex-column action-area">
         <div className="flex-row action-area--track">
           <div className="flex-row justify-center flex-gap-md action-area--panel action-area--buttons">
-            <button id="newGameBtn" className="button primary large">
+            <button id="newGameBtn" className="button primary">
               <span className="material-symbols-outlined">
                 military_tech
               </span> NEW DEPLOYMENT
             </button>
-            {/* <button id="loadLocalSaveBtn" className="button primary large disabled">
-              <span className="material-symbols-outlined">
-                save
-              </span> RESUME SAVED OP
-            </button> */}
           </div>
           <div className="flex-column flex-around flex-gap-md action-area--panel action-area--callsign">
             <div className="form-field-group">
@@ -49,7 +44,7 @@ const HomeScreen = () => (
               </span>
             </button>
             <button id="startSoloBtn" className="col-span-5 button primary " data-mode="solo">
-              Human vs. <br /> Computer
+              Human vs. Computer
             </button>
             <button id="continueBtn" className="col-span-5 button primary " data-mode="pvp">
               tactical link <br />
@@ -222,40 +217,66 @@ const AttackBoardPanel = () => (
   </div>
 );
 
+const RightRail = ({ mode }) => {
+  const topRail = <TopRail />;
+  const vehiclesPanel = (
+    <div className="panel vehicles-panel flex-column flex-around align-center flex-gap-md">
+      <div id="unitList" className="unit-list flex-column align-stretch flex-gap-sm"></div>
+      <div className="orientation-toggle flex-row flex-between align-stretch  align-center">
+        <div className="panel--head"><span>Orientation</span></div>
+        <div className="flex flex-around flex-gap-sm">
+          <button data-orientation="horizontal" className="button secondary small selected">
+            <span className="material-symbols-outlined">width</span>
+          </button>
+          <button data-orientation="vertical" className="button secondary small">
+            <span className="material-symbols-outlined">height</span>
+          </button>
+        </div>
+      </div>
+      <div className="panel--divider"></div>
+      <div className="flex-column flex-between flex-gap-sm">
+        <button id="randomizeBtn" className="button small">
+          Random Layout
+        </button>
+        <button id="clearBoardBtn" className="button small">
+          Reset Layout
+        </button>
+      </div>
+    </div>
+  );
+  const attackPanel = <AttackBoardPanel />;
+  const statusPanel = (
+    <div className="panel status-panel flex-grow flex-column flex-gap-sm">
+      <div id="statusFeed" className="status-feed"></div>
+    </div>
+  );
+  const readyButton = (
+    <button id="readyBtn" className="primary red disabled" disabled>
+      Deploy!
+    </button>
+  );
+  const abortButton = <button id="abort-campaign" className="button small">Abort</button>;
+
+  const contentByMode = {
+    setup: [topRail, vehiclesPanel, readyButton],
+    game: [topRail, attackPanel, statusPanel, abortButton],
+  };
+
+  return (
+    <div className="flex-column flex-gap-md right-rail">
+      {contentByMode[mode] || topRail}
+    </div>
+  );
+};
+
 const SetupScreen = () => (
   <section id="setupScreen" className="flex-row justify-center align-center screen hidden">
     <div className="grid-12">
-      <div className="col-span-8 map-area">
+      <div className="col-span-9 map-area">
         <MapGrid boardId="placementBoard" label="Deployment Grid" showCellCoords />
       </div>
-      <div className="col-span-4 flex-column flex-gap-md right-rail">
-        <TopRail />
-        <div className="panel vehicles-panel flex-column flex-around align-center flex-gap-md">
-          <div id="unitList" className="unit-list flex-column align-stretch flex-gap-sm"></div>
-          <div className="orientation-toggle flex-row flex-between align-stretch  align-center">
-            <div className="panel--head"><span>Orientation</span></div>
-            <div className="flex flex-around flex-gap-sm">
-              <button data-orientation="horizontal" className="button small secondary selected">
-                <span className="material-symbols-outlined">width</span>
-              </button>
-              <button data-orientation="vertical" className="button small secondary">
-                <span className="material-symbols-outlined">height</span>
-              </button>
-            </div>
-          </div>
-          <div className="panel--divider"></div>
-          <div className="flex-row flex-between flex-gap-sm">
-            <button id="randomizeBtn" className="button">
-              Random Layout
-            </button>
-            <button id="clearBoardBtn" className="button">
-              Reset Layout
-            </button>
-          </div>
-        </div>
-        <button id="readyBtn" className="primary red disabled" disabled>
-          Deploy!
-        </button>
+      <div className="col-span-3">
+        <RightRail mode="setup" />
       </div>
     </div>
   </section >
@@ -263,48 +284,200 @@ const SetupScreen = () => (
 const GameScreen = () => (
   <section id="gameScreen" className="flex-row justify-center align-center screen hidden">
     <div className="grid-12">
-      <div className="col-span-8 map-area">
+      <div className="col-span-9 map-area">
         <MapGrid boardId="playerBoard" label="Player Board" showCellCoords />
       </div>
-      <div className="col-span-4 flex-column flex-gap-md right-rail">
-        <TopRail />
-        <AttackBoardPanel />
-        <div className="panel status-panel flex-grow flex-column flex-gap-sm">
-          <div id="statusFeed" className="status-feed"></div>
-        </div>
-        <button id="abort-campaign" className="button small">Abort</button>
+      <div className="col-span-3">
+        <RightRail mode="game" />
       </div>
     </div>
   </section>
 );
 
+const StyleGuide = () => (
+  <div className="style-page">
+    <header className="style-hero panel">
+      <div className="panel--head">GridOps UI Test Page</div>
+      <div className="panel--divider"></div>
+      <div className="style-hero__content">
+        <div className="style-hero__brand">
+          <div className="command-logo style-hero__logo" aria-hidden="true"></div>
+          <div>
+            <h2>UI Elements</h2>
+            <p className="style-subtitle">Use this page to verify layout, spacing, and component states.</p>
+          </div>
+        </div>
+        <div className="style-hero__meta">
+          <div className="style-meta">
+            <span className="style-meta__label">Status</span>
+            <span className="style-meta__value">Operational</span>
+          </div>
+          <div className="style-meta">
+            <span className="style-meta__label">Build</span>
+            <span className="style-meta__value">UI Test Harness</span>
+          </div>
+        </div>
+      </div>
+    </header>
 
+    <section className="style-grid">
+      <div className="panel style-card">
+        <div className="panel--head">Buttons</div>
+        <div className="panel--divider"></div>
+        <div className="style-stack">
+          <div className="style-row flex-row flex-wrap flex-gap-sm">
+            <button className="button primary">Primary</button>
+            <button className="button secondary">Secondary</button>
+            <button className="button red">Destructive</button>
+          </div>
+          <div className="style-row flex-row flex-wrap flex-gap-sm">
+            <button className="button primary large">Large Action</button>
+            <button className="button secondary small">Small</button>
+            <button className="button primary disabled" disabled>Disabled</button>
+          </div>
+          <div className="style-row flex-row flex-wrap flex-gap-sm">
+            <button className="button primary">
+              <span className="material-symbols-outlined">bolt</span>
+              With Icon
+            </button>
+            <button className="button secondary">
+              <span className="material-symbols-outlined">radar</span>
+              Scanner
+            </button>
+          </div>
+        </div>
+      </div>
 
+      <div className="panel style-card">
+        <div className="panel--head">Form Fields</div>
+        <div className="panel--divider"></div>
+        <div className="style-stack">
+          <div className="form-field-group">
+            <label className="form-label" htmlFor="style-call-sign">Callsign</label>
+            <div className="input-shell">
+              <input id="style-call-sign" className="input-field" defaultValue="Viper One" />
+            </div>
+          </div>
+          <div className="form-field-group">
+            <label className="form-label" htmlFor="style-frequency">Channel</label>
+            <div className="input-shell">
+              <input id="style-frequency" className="input-field" placeholder="Enter code" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="panel style-card">
+        <div className="panel--head">Status Panels</div>
+        <div className="panel--divider"></div>
+        <div className="status-panel">
+          <div className="status-item status-success">
+            <span>Deployment complete</span>
+            <strong>OK</strong>
+          </div>
+          <div className="status-item status-warning">
+            <span>Signal interference detected</span>
+            <strong>WARN</strong>
+          </div>
+          <div className="status-item status-danger">
+            <span>Shield breach in sector A7</span>
+            <strong>ALERT</strong>
+          </div>
+          <div className="status-item status-info">
+            <span>Awaiting tactical input</span>
+            <strong>INFO</strong>
+          </div>
+          <div className="status-item status-round">
+            <span>Round 3</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="panel style-card">
+        <div className="panel--head">Lists & Panels</div>
+        <div className="panel--divider"></div>
+        <ul className="player-list">
+          <li className="player-row">
+            <span className="player-row__callsign">Falcon</span>
+            <span className="player-row__action">Ready</span>
+          </li>
+          <li className="player-row">
+            <span className="player-row__callsign">Specter</span>
+            <span className="player-row__action">Idle</span>
+          </li>
+          <li className="player-row empty">No operators online</li>
+        </ul>
+      </div>
+
+      <div className="panel style-card style-card--wide">
+        <div className="panel--head">Map Grid</div>
+        <div className="panel--divider"></div>
+        <div className="style-map">
+          <MapGrid boardId="styleBoard" showCellCoords />
+        </div>
+      </div>
+
+      <div className="panel style-card">
+        <div className="panel--head">Modal</div>
+        <div className="panel--divider"></div>
+        <div className="modal style-preview">
+          <div className="modal-content">
+            <p className="modal-message">Confirm tactical transfer?</p>
+            <div className="modal-actions">
+              <button className="button primary">Confirm</button>
+              <button className="button secondary">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="panel style-card">
+        <div className="panel--head">Overlay Banner</div>
+        <div className="panel--divider"></div>
+        <div className="overlay-banner overlay-banner--visible style-preview">
+          <span className="overlay-banner__message">Strike Authorized</span>
+        </div>
+      </div>
+    </section>
+  </div>
+);
 
 
 function AppShell() {
+  const isStylePage = typeof window !== 'undefined' && window.location?.pathname === '/style';
+
   React.useEffect(() => {
+    if (isStylePage) {
+      return;
+    }
     if (typeof window !== 'undefined' && window.GridOps && typeof window.GridOps.initializeApp === 'function') {
       window.GridOps.initializeApp();
     } else {
       console.error('GridOps initializeApp unavailable.');
     }
-  }, []);
+  }, [isStylePage]);
 
   return (
     <div id="app" className="app">
       <div className="crt-overlay"></div>
       <OverlayBanner />
-      <main className="screens flex justify-center align-center">
-        <HomeScreen />
-        <PvpScreen />
-        <SetupScreen />
-        <GameScreen />
-
-      </main>
-      <MatchRequestDialog />
-      <MatchConnectingDialog />
-      <WaitingForOpponentDialog />
+      {isStylePage ? (
+        <main className="screens style-shell">
+          <StyleGuide />
+        </main>
+      ) : (
+        <>
+          <main className="screens flex justify-center align-center">
+            <HomeScreen />
+            <PvpScreen />
+            <SetupScreen />
+            <GameScreen />
+          </main>
+          <MatchRequestDialog />
+          <MatchConnectingDialog />
+          <WaitingForOpponentDialog />
+        </>
+      )}
     </div>
   );
 }
