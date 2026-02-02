@@ -1910,8 +1910,8 @@ async function finalizePlayerAttack() {
     fireButton.classList.add('disabled');
   }
   state.attackHistory.add(coordinate);
-  await playSfx(SFX_PATHS.FIRE);
   if (state.mode === GAME_MODES.SOLO) {
+    await playSfx(SFX_PATHS.FIRE);
     const opponentLabel = getOpponentLabel('Enemy');
     const result = resolveAttackAgainstBoard(state.aiBoard, coordinate);
     state.attackResults[coordinate] = result.hit ? 'hit' : 'miss';
@@ -1949,6 +1949,7 @@ async function finalizePlayerAttack() {
     window.setTimeout(aiTakeTurn, 1000);
   } else if (state.mode === GAME_MODES.PVP) {
     if (!state.gameId) return;
+    void playSfx(SFX_PATHS.FIRE);
     socket.emit('attack', { gameId: state.gameId, coordinate });
     state.attackResults[coordinate] = 'pending';
     state.attackSelection = null;
@@ -2340,7 +2341,7 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
     } else {
       state.opponentAttackHistory.add(coordinate);
       const resultBoard = resolveAttackAgainstBoard(state.playerBoard, coordinate);
-      await playSfx(SFX_PATHS.FIRE);
+      void playSfx(SFX_PATHS.FIRE);
       renderPlayerBoard();
       const playerCell = elements.boards.player.querySelector(`[data-coord="${coordinate}"]`);
       animateCell(playerCell, resultBoard.hit ? 'hit' : 'miss');
