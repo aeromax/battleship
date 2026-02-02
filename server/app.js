@@ -44,9 +44,66 @@ const state = {
   roundActive: false,
 };
 
+const AI_CALLSIGNS = [
+  'Maverick',
+  'Iceman',
+  'Viper',
+  'Ghost',
+  'Raptor',
+  'Thunder',
+  'Blaze',
+  'Reaper',
+  'Switchblade',
+  'Atlas',
+  'Warlock',
+  'Bullet',
+  'Cyclone',
+  'Talon',
+  'Havoc',
+  'Falcon',
+  'Stingray',
+  'Nightfall',
+  'Widow',
+  'Crossfire',
+  'Afterburner',
+  'Redline',
+  'Ironclad',
+  'Blackjack',
+  'Sidewinder',
+  'Outlaw',
+  'Ricochet',
+  'Frostbite',
+  'Longshot',
+  'Scorch',
+  'Vandal',
+  'Overlord',
+  'Knuckles',
+  'Deadeye',
+  'Banshee',
+  'Torque',
+  'Sentinel',
+  'Razor',
+  'Firestorm',
+  'Wraith',
+  'Hammer',
+  'Skipper',
+  'Payload',
+  'Sabre',
+  'Ghostrider',
+  'Lockjaw',
+  'Drift',
+  'Breaker',
+  'Echo',
+  'Wildcard'
+];
+
+function pickAiCallsign() {
+  return AI_CALLSIGNS[Math.floor(Math.random() * AI_CALLSIGNS.length)];
+}
+
 function getOpponentLabel(defaultLabel = 'Enemy') {
   if (state.mode === GAME_MODES.SOLO) {
-    return 'Computer';
+    return state.opponentName || 'Computer';
   }
   return state.opponentName || defaultLabel;
 }
@@ -817,6 +874,7 @@ function buildSoloSavePayload() {
   return {
     mode: 'solo',
     difficulty: state.difficulty,
+    opponentName: state.opponentName,
     player: {
       board: state.playerBoard,
       turn: state.playerTurn,
@@ -1730,7 +1788,7 @@ function showPostGameModal(title, message) {
 
 function setupSoloSession() {
   state.mode = GAME_MODES.SOLO;
-  state.opponentName = 'CPU';
+  state.opponentName = pickAiCallsign();
   resetRoundCounter();
   renderUnitList();
   resetPlacementBoard();
@@ -2424,6 +2482,7 @@ function loadSavedGame(data) {
   if (data.mode === 'solo') {
     state.mode = GAME_MODES.SOLO;
     state.difficulty = data.difficulty || DIFFICULTIES.LOW;
+    state.opponentName = data.opponentName || pickAiCallsign();
     state.playerBoard = data.player.board;
     state.aiBoard = data.ai.board;
     state.playerTurn = data.player.turn;
