@@ -10,12 +10,36 @@
     body {
       min-height: 100vh;
       display: flex;
+      flex-direction: column;
       justify-content: center;
       align-items: center;
-      gap: 3rem;
+      gap: 2rem;
+      padding: 2.5rem;
       background: #05060a;
       color: #fff;
       font-family: "Tech Mono", "Courier New", monospace;
+    }
+
+    .button-showcase {
+      width: min(1000px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      align-items: center;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+    }
+
+    .button-label {
+      font-size: 0.85rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.6);
     }
 
     .sprite-grid {
@@ -48,6 +72,29 @@
 </head>
 
 <body>
+  <div class="button-showcase">
+    <div class="button-label">Button Variants</div>
+    <div class="button-row">
+      <button class="button primary">Primary</button>
+      <button class="button secondary">Secondary</button>
+      <button class="button red">Destructive</button>
+      <button class="button primary selected">Selected</button>
+      <button class="button primary disabled" disabled>Disabled</button>
+    </div>
+    <div class="button-row">
+      <button class="button primary large">Large Action</button>
+      <button class="button secondary small">Small</button>
+      <button class="button primary">
+        <span class="material-symbols-outlined">bolt</span>
+        With Icon
+      </button>
+      <button class="button secondary">
+        <span class="material-symbols-outlined">radar</span>
+        Scanner
+      </button>
+    </div>
+  </div>
+
   <div class="sprite-grid">
     <div id="hit-sprite" class="cell hit"></div>
     <span>Hit (7 frames)</span>
