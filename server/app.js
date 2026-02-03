@@ -991,17 +991,17 @@ function hideModePanel() {
 }
 
 function slideActionAreaTrackTo(targetIndex = 0) {
-  const track = elements?.screens?.home?.querySelector('.action-area--track');
+  const track =
+    elements?.screens?.home?.querySelector('.action-area--track') ||
+    elements?.screens?.home?.querySelector('.action-area');
   if (!track) return;
   const panels = track.querySelectorAll('.action-area--panel');
   const panelCount = panels.length || 1;
   const clampedIndex = Math.min(Math.max(targetIndex, 0), panelCount - 1);
-  const share = 100 / panelCount;
-  panels.forEach((panel) => {
-    panel.style.flex = `0 0 ${share}%`;
+  panels.forEach((panel, index) => {
+    panel.setAttribute('aria-hidden', index !== clampedIndex);
   });
-  track.style.width = `${panelCount * 100}%`;
-  track.style.transform = `translateX(${clampedIndex * -share}%)`;
+  track.style.setProperty('--action-panel-index', clampedIndex);
   track.dataset.activePanelIndex = `${clampedIndex}`;
 }
 

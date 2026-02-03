@@ -6,7 +6,7 @@ const HomeScreen = () => (
       </div>
       <div className="flex-column action-area">
         <div className="flex-row action-area--track">
-          <div className="flex-row justify-center flex-gap-md action-area--panel action-area--buttons">
+          <div className="flex-row align-center justify-center flex-gap-md action-area--panel action-area--buttons">
             <button id="newGameBtn" className="button primary">
               <span className="material-symbols-outlined">
                 military_tech
@@ -37,7 +37,7 @@ const HomeScreen = () => (
               </button>
             </div>
           </div>
-          <div className="grid-12 action-area--panel action-area--game-mode">
+          <div className="grid-12 flex-column flex-around flex-gap-md action-area--panel action-area--game-mode">
             <button id="cancelModeBtn" className="col-span-2 button secondary ">
               <span className="material-symbols-outlined">
                 arrow_back
