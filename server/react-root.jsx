@@ -241,7 +241,6 @@ const AttackBoardPanel = () => (
 );
 
 const RightRail = ({ mode }) => {
-  const topRail = <TopRail />;
   const vehiclesPanel = (
     <div className="panel vehicles-panel flex-column flex-around align-center flex-gap-md">
       <div id="unitList" className="unit-list flex-column align-stretch flex-gap-sm"></div>
@@ -281,13 +280,13 @@ const RightRail = ({ mode }) => {
   const abortButton = <button id="abort-campaign" className="button small">Abort</button>;
 
   const contentByMode = {
-    setup: [topRail, vehiclesPanel, readyButton],
-    game: [topRail, attackPanel, statusPanel, abortButton],
+    setup: [vehiclesPanel, readyButton],
+    game: [attackPanel, statusPanel, abortButton],
   };
 
   return (
     <div className="flex-column flex-gap-md right-rail">
-      {contentByMode[mode] || topRail}
+      {contentByMode[mode]}
     </div>
   );
 };
@@ -295,6 +294,7 @@ const RightRail = ({ mode }) => {
 const SetupScreen = () => (
   <section id="setupScreen" className="flex-row justify-center align-center screen hidden">
     <div className="grid-12">
+      <TopRail />
       <div className="col-span-9 map-area">
         <MapGrid boardId="placementBoard" label="Deployment Grid" showCellCoords />
       </div>
@@ -307,6 +307,7 @@ const SetupScreen = () => (
 const GameScreen = () => (
   <section id="gameScreen" className="flex-row justify-center align-center screen hidden">
     <div className="grid-12">
+      <TopRail />
       <div className="col-span-9 map-area">
         <MapGrid boardId="playerBoard" label="Player Board" showCellCoords />
       </div>

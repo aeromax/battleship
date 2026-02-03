@@ -787,17 +787,24 @@ button.red {
   max-height: 100%;
   height: 100%;
   aspect-ratio: 1 / 1;
+  @media (max-width: 1330px) {
+    aspect-ratio: 1/1;
+  }
 }
 
 .map-area {
-  width: 100%;
-  height: 100%;
+  aspect-ratio: 1/1;
   min-height: 0;
   justify-content: center;
+  @media (max-width: 1330px) {
+    aspect-ratio: none;
+  }
+  @media (min-width: 1170px) {
+    max-height: 86vh;
+  }
 }
 
 .attack-board-panel {
-  flex: 1 1 auto;
   min-height: 0;
 }
 
@@ -811,7 +818,6 @@ button.red {
   height: 100%;
   border-radius: fw.$radius-lg;
   border: 2px solid rgba(fw.$color-secondary, 0.25);
-  padding: fw.$spacing-xs;
   background: rgba(0, 0, 0, 0.45);
   box-shadow: fw.$elevation-deep;
   touch-action: none;
