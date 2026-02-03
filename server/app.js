@@ -689,6 +689,7 @@ function collectElements(root = document) {
     hud: {
       statusFeed: root.getElementById ? root.getElementById('statusFeed') : root.querySelector('#statusFeed'),
       turnBanner: root.getElementById ? root.getElementById('turnBanner') : root.querySelector('#turnBanner'),
+      topRailTitle: root.getElementById ? root.getElementById('topRailTitle') : root.querySelector('#topRailTitle'),
       homeStatus: root.getElementById ? root.getElementById('homeStatus') : root.querySelector('#homeStatus'),
       homeStatusMessage: root.getElementById
         ? root.getElementById('homeStatusMessage')
@@ -1016,6 +1017,7 @@ function handleNewDeploymentStart() {
   }
   setHomeStatusMessage('');
   requestPlayerRegistration();
+  updateTopRailTitle();
   state.mode = null;
   showModePanel();
   toggleModal('mode', true);
@@ -1610,6 +1612,21 @@ function setTurnBanner(message) {
   elements.hud.turnBanner.textContent = message;
 }
 
+function updateTopRailTitle() {
+  const title = elements?.hud?.topRailTitle;
+  if (!title) return;
+  const player = state.playerName?.trim();
+  const opponent = getOpponentLabel('Opponent');
+  if (!player && !state.opponentName) {
+    title.textContent = '';
+    title.classList.add('is-empty');
+    return;
+  }
+  const playerLabel = player || 'Player';
+  title.textContent = `${playerLabel} vs. ${opponent}`;
+  title.classList.remove('is-empty');
+}
+
 function showOverlayBanner(message, duration = 2400) {
   if (typeof window === 'undefined') return;
   window.GridOps?.showOverlayBanner?.(message, duration);
@@ -1891,6 +1908,7 @@ function applyReconnectState(payload) {
   if (playerName) {
     state.playerName = playerName;
   }
+  updateTopRailTitle();
   state.playerBoard = playerBoard;
   state.aiBoard = createEmptyBoard();
   state.attackHistory = new Set(playerShots || []);
@@ -1934,6 +1952,7 @@ function restartToModeSelection() {
   clearMpReconnect();
   handleMenuAction('abort');
   state.opponentName = null;
+  updateTopRailTitle();
   showModePanel();
   toggleModal('mode', true);
 }
@@ -1980,6 +1999,7 @@ function showPostGameModal(title, message) {
 function setupSoloSession() {
   state.mode = GAME_MODES.SOLO;
   state.opponentName = pickAiCallsign();
+  updateTopRailTitle();
   resetRoundCounter();
   renderUnitList();
   resetPlacementBoard();
@@ -2559,6 +2579,7 @@ socket.on('matchStarted', ({ gameId, opponentName }) => {
   state.mode = GAME_MODES.PVP;
   state.gameId = gameId;
   state.opponentName = opponentName;
+  updateTopRailTitle();
   writeMpReconnect({
     gameId,
     playerName: state.playerName,
@@ -2816,6 +2837,7 @@ export function initializeApp(root = document) {
     }
     requestPlayerRegistration();
   }
+  updateTopRailTitle();
 }
 
 if (typeof window !== 'undefined') {

@@ -111,7 +111,8 @@ const MapGrid = ({ boardId, showAxis = false, showCellCoords = false }) => (
 );
 const TopRail = ({ }) => (
   <div className="col-span-12 top-rail flex-row flex-between flex-gap-md justify-start">
-    <div className="command-logo flex-grow" alt="GridOps logo" />
+    <div className="command-logo" alt="GridOps logo" />
+    <div id="topRailTitle" className="top-rail-title" aria-live="polite"></div>
   </div>
 );
 const OverlayBanner = () => {

@@ -628,12 +628,27 @@ h1 {
 
 .top-rail {
   height: 50px;
+  align-items: center;
 }
 .top-rail .command-logo {
   background-image: url("/assets/img/gridops_logo_h.png");
-  float: left;
   height: 100%;
+  width: 170px;
   background-position: left;
+}
+.top-rail .top-rail-title {
+  font-family: "Press Start 2p", "Courier New", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.9rem;
+  color: #efefef;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.top-rail .top-rail-title.is-empty {
+  opacity: 0;
 }
 
 .flex {
