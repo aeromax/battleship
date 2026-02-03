@@ -6,10 +6,12 @@ socket.on('connect', () => {
   socket.emit('requestPlayerList');
 });
 const LOCAL_SAVE_KEY = 'gridops-local-saves';
+const MP_RECONNECT_KEY = 'gridops-mp-reconnect';
 let selectedLocalSave = null;
 let autoSaveTimer = null;
 const AUTO_SAVE_DEBOUNCE_MS = 250;
 let beforeUnloadGuardBound = false;
+let reconnectRequested = false;
 
 const state = {
   view: MODES.HOME,
@@ -149,6 +151,9 @@ const COPY = {
     missionSaved: '💾 Mission state stored successfully.',
     commandError: (message) => message || '⚠️ Command error encountered.',
     opponentDisconnected: '⚠️ Opponent disconnected. Mission aborted.',
+    opponentDisconnectedName: (label) =>
+      `${label} has disconnected. Wait for them to reconnect, or return to the main screen.`,
+    opponentRetreatedName: (label) => `${label} has retreated from battle.`,
     reconnectMultiplayer: '⚠️ Reconnect to multiplayer session via Tactical Link.',
     matchRequestPrompt: (name) => `${name} would like to play with you!`,
     playRequestRejected: (name) => `${name} has rejected your play request.`,
@@ -161,6 +166,10 @@ const COPY = {
 const matchDialogState = {
   incomingRequest: null,
   outgoingRequest: null,
+};
+const reconnectDialogState = {
+  gameId: null,
+  opponentName: null,
 };
 let outgoingRejectionTimer = null;
 
@@ -606,6 +615,13 @@ function collectElements(root = document) {
       waitingForOpponentMessage: root.getElementById
         ? root.getElementById('waitingForOpponentMessage')
         : root.querySelector('#waitingForOpponentMessage'),
+      waitingForOpponentRestart: root.getElementById
+        ? root.getElementById('waitingForOpponentRestartBtn')
+        : root.querySelector('#waitingForOpponentRestartBtn'),
+      reconnect: root.getElementById ? root.getElementById('reconnectModal') : root.querySelector('#reconnectModal'),
+      reconnectMessage: root.getElementById
+        ? root.getElementById('reconnectMessage')
+        : root.querySelector('#reconnectMessage'),
     },
     inputs: {
       playerName: root.getElementById ? root.getElementById('playerName') : root.querySelector('#playerName'),
@@ -644,6 +660,15 @@ function collectElements(root = document) {
       matchDeny: root.getElementById
         ? root.getElementById('matchDenyBtn')
         : root.querySelector('#matchDenyBtn'),
+      waitingRestart: root.getElementById
+        ? root.getElementById('waitingForOpponentRestartBtn')
+        : root.querySelector('#waitingForOpponentRestartBtn'),
+      reconnectConfirm: root.getElementById
+        ? root.getElementById('reconnectConfirmBtn')
+        : root.querySelector('#reconnectConfirmBtn'),
+      reconnectDeny: root.getElementById
+        ? root.getElementById('reconnectDenyBtn')
+        : root.querySelector('#reconnectDenyBtn'),
     },
     lists: {
       unit: root.getElementById ? root.getElementById('unitList') : root.querySelector('#unitList'),
@@ -691,6 +716,32 @@ function collectElements(root = document) {
 
 function hasLocalStorage() {
   return typeof window !== 'undefined' && Boolean(window.localStorage);
+}
+
+function readMpReconnect() {
+  if (!hasLocalStorage()) return null;
+  try {
+    const raw = window.localStorage.getItem(MP_RECONNECT_KEY);
+    if (!raw) return null;
+    const payload = JSON.parse(raw);
+    if (!payload || typeof payload !== 'object') return null;
+    return payload;
+  } catch (err) {
+    console.error('Failed to read multiplayer reconnect payload', err);
+    return null;
+  }
+}
+
+function writeMpReconnect(payload) {
+  if (!hasLocalStorage()) return;
+  if (!payload || typeof payload !== 'object') return;
+  window.localStorage.setItem(MP_RECONNECT_KEY, JSON.stringify(payload));
+}
+
+function clearMpReconnect() {
+  if (!hasLocalStorage()) return;
+  window.localStorage.removeItem(MP_RECONNECT_KEY);
+  reconnectRequested = false;
 }
 
 function shouldBlockUnload() {
@@ -1457,6 +1508,7 @@ function handleMenuAction(action) {
     case 'abort': {
       const shouldClearLocalSave = state.mode === GAME_MODES.SOLO;
       hideWaitingForOpponentDialog();
+      clearMpReconnect();
       if (state.mode === GAME_MODES.PVP && state.gameId) {
         socket.emit('cancelMatch');
       }
@@ -1576,6 +1628,21 @@ function possessiveLabel(label) {
 function requestPlayerRegistration() {
   if (!state.playerName) return;
   socket.emit('registerPlayer', { name: state.playerName });
+}
+
+function maybeRequestReconnect() {
+  if (reconnectRequested) return;
+  const payload = readMpReconnect();
+  if (!payload?.gameId || !payload?.playerName) return;
+  if (state.playerName && state.playerName !== payload.playerName) {
+    return;
+  }
+  reconnectRequested = true;
+  state.playerName = payload.playerName;
+  if (elements?.inputs?.playerName && !elements.inputs.playerName.value) {
+    elements.inputs.playerName.value = payload.playerName;
+  }
+  socket.emit('requestReconnect', { gameId: payload.gameId, playerName: payload.playerName });
 }
 
 function setHomeStatusMessage(message = '') {
@@ -1734,9 +1801,35 @@ function showOutgoingMatchRejection(opponentName) {
 function showWaitingForOpponentDialog(opponentName) {
   const dialog = elements?.dialogs?.waitingForOpponent;
   const message = elements?.dialogs?.waitingForOpponentMessage;
+  const restartButton = elements?.dialogs?.waitingForOpponentRestart;
   if (!dialog || !message) return;
   const label = opponentName?.trim() || 'opponent';
   message.textContent = COPY.status.waitingForOpponent(label);
+  if (restartButton) {
+    restartButton.classList.add('hidden');
+  }
+  dialog.classList.remove('hidden');
+}
+
+function showOpponentDisconnectedDialog(opponentName) {
+  const dialog = elements?.dialogs?.waitingForOpponent;
+  const message = elements?.dialogs?.waitingForOpponentMessage;
+  const restartButton = elements?.dialogs?.waitingForOpponentRestart;
+  if (!dialog || !message || !restartButton) return;
+  const label = opponentName?.trim() || 'Opponent';
+  message.textContent = COPY.status.opponentDisconnectedName(label);
+  restartButton.classList.remove('hidden');
+  dialog.classList.remove('hidden');
+}
+
+function showOpponentRetreatedDialog(opponentName) {
+  const dialog = elements?.dialogs?.waitingForOpponent;
+  const message = elements?.dialogs?.waitingForOpponentMessage;
+  const restartButton = elements?.dialogs?.waitingForOpponentRestart;
+  if (!dialog || !message || !restartButton) return;
+  const label = opponentName?.trim() || 'Opponent';
+  message.textContent = COPY.status.opponentRetreatedName(label);
+  restartButton.classList.remove('hidden');
   dialog.classList.remove('hidden');
 }
 
@@ -1745,6 +1838,104 @@ function hideWaitingForOpponentDialog() {
   if (dialog) {
     dialog.classList.add('hidden');
   }
+}
+
+function showReconnectPrompt(gameId, opponentName) {
+  const dialog = elements?.dialogs?.reconnect;
+  const message = elements?.dialogs?.reconnectMessage;
+  if (!dialog || !message) return;
+  hideWaitingForOpponentDialog();
+  hideOutgoingMatchRequest();
+  reconnectDialogState.gameId = gameId;
+  const label = opponentName || 'Opponent';
+  reconnectDialogState.opponentName = label;
+  message.textContent = `Would you like to continue your game with ${label}?`;
+  dialog.classList.remove('hidden');
+}
+
+function hideReconnectPrompt() {
+  const dialog = elements?.dialogs?.reconnect;
+  if (dialog) {
+    dialog.classList.add('hidden');
+  }
+  reconnectDialogState.gameId = null;
+  reconnectDialogState.opponentName = null;
+}
+
+function showReconnectConnecting(opponentName) {
+  const dialog = elements?.dialogs?.matchConnecting;
+  const message = elements?.dialogs?.matchConnectingMessage;
+  const loader = elements?.dialogs?.matchConnectingLoader;
+  if (!dialog || !message) return;
+  message.textContent = COPY.status.connectingToPlayer(opponentName);
+  loader?.classList.remove('hidden');
+  dialog.classList.remove('hidden');
+}
+
+function applyReconnectState(payload) {
+  if (!payload) return;
+  const {
+    gameId,
+    opponentName,
+    playerName,
+    playerBoard,
+    opponentBoard,
+    playerShots,
+    opponentShots,
+    currentTurn,
+    order,
+  } = payload;
+  state.mode = GAME_MODES.PVP;
+  state.gameId = gameId;
+  state.opponentName = opponentName;
+  if (playerName) {
+    state.playerName = playerName;
+  }
+  state.playerBoard = playerBoard;
+  state.aiBoard = createEmptyBoard();
+  state.attackHistory = new Set(playerShots || []);
+  state.opponentAttackHistory = new Set(opponentShots || []);
+  state.attackResults = {};
+  (playerShots || []).forEach((coord) => {
+    const cell = opponentBoard?.cells?.[coord];
+    if (cell && cell.hit) {
+      state.attackResults[coord] = cell.occupant ? 'hit' : 'miss';
+    } else {
+      state.attackResults[coord] = 'miss';
+    }
+  });
+  state.setupLocked = true;
+  state.dieComplete = true;
+  state.gameStarted = true;
+  state.currentTurnSocket = currentTurn || null;
+  state.playerTurn = currentTurn === state.socketId;
+  state.roundActive = false;
+  state.roundNumber = 0;
+  state.attackSelection = null;
+  state.statusMessages = [];
+  renderStatusFeed();
+  switchScreen(MODES.GAME);
+  renderPlayerBoard();
+  renderAttackBoard();
+  setTurnBanner(state.playerTurn ? 'Your turn!' : `${opponentName} turn`);
+  if (state.playerTurn) {
+    showOverlayBanner('Your turn!');
+  } else {
+    endRound();
+  }
+  syncAttackInterface();
+  updateBeforeUnloadGuard();
+}
+
+function restartToModeSelection() {
+  hideIncomingMatchRequest();
+  hideOutgoingMatchRequest();
+  hideReconnectPrompt();
+  clearMpReconnect();
+  handleMenuAction('abort');
+  state.opponentName = null;
+  showModePanel();
+  toggleModal('mode', true);
 }
 
 function handleMatchResponse(accepted) {
@@ -2007,7 +2198,6 @@ async function finalizePlayerAttack() {
     window.setTimeout(aiTakeTurn, 1000);
   } else if (state.mode === GAME_MODES.PVP) {
     if (!state.gameId) return;
-    void playSfx(SFX_PATHS.FIRE);
     socket.emit('attack', { gameId: state.gameId, coordinate });
     state.attackResults[coordinate] = 'pending';
     state.attackSelection = null;
@@ -2231,6 +2421,35 @@ function setupEventListeners() {
     });
   }
 
+  if (elements?.buttons?.waitingRestart) {
+    elements.buttons.waitingRestart.addEventListener('click', () => {
+      restartToModeSelection();
+    });
+  }
+
+  if (elements?.buttons?.reconnectConfirm) {
+    elements.buttons.reconnectConfirm.addEventListener('click', () => {
+      if (!reconnectDialogState.gameId) return;
+      const gameId = reconnectDialogState.gameId;
+      const opponentName = reconnectDialogState.opponentName || 'Opponent';
+      hideReconnectPrompt();
+      showReconnectConnecting(opponentName);
+      socket.emit('reconnectDecision', { gameId, accept: true });
+    });
+  }
+
+  if (elements?.buttons?.reconnectDeny) {
+    elements.buttons.reconnectDeny.addEventListener('click', () => {
+      if (!reconnectDialogState.gameId) return;
+      const gameId = reconnectDialogState.gameId;
+      hideReconnectPrompt();
+      socket.emit('reconnectDecision', { gameId, accept: false });
+      state.mode = null;
+      state.gameId = null;
+      restartToModeSelection();
+    });
+  }
+
   if (elements.header.menuToggle) {
     elements.header.menuToggle.addEventListener('click', (event) => {
       event.preventDefault();
@@ -2278,6 +2497,7 @@ socket.on('playerRegistered', ({ socketId }) => {
   if (hasPlayerListData) {
     updateHomeStatusOnlinePlayers(latestPlayerList);
   }
+  maybeRequestReconnect();
 });
 
 socket.on('playerList', (players) => {
@@ -2302,12 +2522,48 @@ socket.on('matchRequestCancelled', () => {
   pushStatus(COPY.status.matchRequestCancelled, 'warning');
 });
 
+socket.on('reconnectPrompt', ({ gameId, opponentName }) => {
+  if (!gameId || !opponentName) return;
+  showReconnectPrompt(gameId, opponentName);
+});
+
+socket.on('reconnectWaiting', ({ opponentName }) => {
+  if (!opponentName) return;
+  hideReconnectPrompt();
+  showReconnectConnecting(opponentName);
+});
+
+socket.on('reconnectDeclined', ({ name }) => {
+  hideReconnectPrompt();
+  hideOutgoingMatchRequest();
+  clearMpReconnect();
+  showOpponentRetreatedDialog(name || 'Opponent');
+});
+
+socket.on('reconnectState', (payload) => {
+  hideReconnectPrompt();
+  hideOutgoingMatchRequest();
+  hideWaitingForOpponentDialog();
+  applyReconnectState(payload);
+});
+
+socket.on('reconnectUnavailable', () => {
+  clearMpReconnect();
+  hideReconnectPrompt();
+  hideOutgoingMatchRequest();
+});
+
 socket.on('matchStarted', ({ gameId, opponentName }) => {
   hideIncomingMatchRequest();
   hideOutgoingMatchRequest();
   state.mode = GAME_MODES.PVP;
   state.gameId = gameId;
   state.opponentName = opponentName;
+  writeMpReconnect({
+    gameId,
+    playerName: state.playerName,
+    opponentName,
+  });
   state.attackHistory = new Set();
   state.attackResults = {};
   state.opponentAttackHistory = new Set();
@@ -2365,7 +2621,6 @@ socket.on('turnStart', ({ currentTurn, order }) => {
   }
   if (state.playerTurn) {
     startRoundIfNeeded();
-    showOverlayBanner('Your turn!');
   } else {
     endRound();
   }
@@ -2379,6 +2634,7 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
   try {
     const opponentLabel = getOpponentLabel('Enemy');
     if (attacker === state.socketId) {
+      await playSfx(SFX_PATHS.FIRE);
       state.attackResults[coordinate] = result.hit ? 'hit' : 'miss';
       state.attackHistory.add(coordinate);
       const cellEl = elements.boards.attack.querySelector(`[data-coord="${coordinate}"]`);
@@ -2399,7 +2655,7 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
     } else {
       state.opponentAttackHistory.add(coordinate);
       const resultBoard = resolveAttackAgainstBoard(state.playerBoard, coordinate);
-      void playSfx(SFX_PATHS.FIRE);
+      await playSfx(SFX_PATHS.FIRE);
       renderPlayerBoard();
       const playerCell = elements.boards.player.querySelector(`[data-coord="${coordinate}"]`);
       animateCell(playerCell, resultBoard.hit ? 'hit' : 'miss');
@@ -2417,6 +2673,9 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
         pushStatus(COPY.status.opponentAttackUnsuccessful(opponentLabel), 'success');
       }
     }
+    if (state.mode === GAME_MODES.PVP && state.playerTurn) {
+      showOverlayBanner('Your turn!');
+    }
   } catch (error) {
     console.error('Failed to play attack result SFX', error);
   }
@@ -2424,6 +2683,7 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
 
 socket.on('gameOver', ({ winner, winnerName }) => {
   state.gameStarted = false;
+  clearMpReconnect();
   const victory = winner === state.socketId;
   setTurnBanner(victory ? 'Victory!' : 'Defeat.');
   state.playerTurn = false;
@@ -2445,7 +2705,6 @@ socket.on('gameState', (payload) => {
     state.playerTurn = payload.currentTurn === state.socketId;
     if (state.playerTurn) {
       startRoundIfNeeded();
-      showOverlayBanner('Your turn!');
     } else {
       endRound();
     }
@@ -2467,14 +2726,17 @@ socket.on('matchError', ({ message }) => {
   pushStatus(COPY.status.commandError(message), 'danger');
 });
 
-socket.on('opponentLeft', () => {
+socket.on('opponentLeft', ({ name } = {}) => {
+  hideIncomingMatchRequest();
+  hideOutgoingMatchRequest();
+  hideReconnectPrompt();
   pushStatus(COPY.status.opponentDisconnected, 'warning');
   setTurnBanner('Opponent disconnected');
   state.playerTurn = false;
   endRound();
   state.attackSelection = null;
   syncAttackInterface();
-  showPostGameModal('Mission Interrupted', 'Opponent left the battlefield.');
+  showOpponentDisconnectedDialog(name || state.opponentName);
   updateBeforeUnloadGuard();
 });
 
@@ -2545,6 +2807,14 @@ export function initializeApp(root = document) {
   updateBeforeUnloadGuard();
   if (hasPlayerListData) {
     updateHomeStatusOnlinePlayers(latestPlayerList);
+  }
+  const reconnectPayload = readMpReconnect();
+  if (reconnectPayload?.playerName) {
+    state.playerName = reconnectPayload.playerName;
+    if (elements?.inputs?.playerName && !elements.inputs.playerName.value) {
+      elements.inputs.playerName.value = reconnectPayload.playerName;
+    }
+    requestPlayerRegistration();
   }
 }
 

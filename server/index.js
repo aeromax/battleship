@@ -159,6 +159,9 @@ async function createGameRecord({ creatorId, opponentId }) {
     id,
     createdAt,
     mode: 'pvp',
+    started: false,
+    reconnectPending: false,
+    reconnectVotes: {},
     players: {
       [creatorId]: {
         socketId: creatorId,
@@ -211,8 +214,89 @@ function serializeGame(record) {
   };
 }
 
+function findPlayerEntryByName(game, playerName) {
+  const target = String(playerName || '').trim();
+  if (!target) return null;
+  return Object.entries(game.players).find(([, player]) => player.name === target) || null;
+}
+
+function reassignPlayerSocket(game, oldId, newId) {
+  if (!game.players[oldId] || oldId === newId) return;
+  const player = game.players[oldId];
+  delete game.players[oldId];
+  player.socketId = newId;
+  player.connected = true;
+  game.players[newId] = player;
+  if (Array.isArray(game.order)) {
+    game.order = game.order.map((id) => (id === oldId ? newId : id));
+  }
+  if (game.currentTurn === oldId) {
+    game.currentTurn = newId;
+  }
+  if (game.winner === oldId) {
+    game.winner = newId;
+  }
+}
+
+function buildReconnectPayload(game, socketId) {
+  const player = game.players[socketId];
+  const opponentId = Object.keys(game.players).find((id) => id !== socketId);
+  const opponent = opponentId ? game.players[opponentId] : null;
+  return {
+    gameId: game.id,
+    opponentName: opponent?.name || 'Opponent',
+    playerName: player?.name || 'Player',
+    playerBoard: player?.board || null,
+    opponentBoard: opponent?.board || null,
+    playerShots: Array.from(player?.shots || []),
+    opponentShots: Array.from(opponent?.shots || []),
+    currentTurn: game.currentTurn,
+    order: game.order || [],
+  };
+}
+
 function resetGameIfIncomplete(socketId) {
   cancelPendingMatchRequestsForSocket(socketId);
+  const player = players.get(socketId);
+  if (!player?.currentGameId) {
+    return;
+  }
+  const game = games.get(player.currentGameId);
+  if (!game) {
+    players.set(socketId, { ...player, currentGameId: null, status: 'online' });
+    return;
+  }
+  const opponentId = Object.keys(game.players).find((id) => id !== socketId);
+  if (game.started) {
+    const gamePlayer = game.players[socketId];
+    if (gamePlayer) {
+      gamePlayer.connected = false;
+    }
+    if (opponentId) {
+      io.to(opponentId).emit('opponentLeft', { name: gamePlayer?.name || player?.name || 'Opponent' });
+    }
+    if (!game.reconnectPending) {
+      game.reconnectPending = true;
+      game.reconnectVotes = {};
+    }
+    game.lastUpdate = Date.now();
+    return;
+  }
+  if (opponentId) {
+    const opponent = players.get(opponentId);
+    if (opponent) {
+      opponent.status = 'online';
+      opponent.currentGameId = null;
+      players.set(opponentId, opponent);
+      io.to(opponentId).emit('opponentLeft', { name: player?.name || 'Opponent' });
+    }
+  }
+  games.delete(game.id);
+  players.set(socketId, { ...player, currentGameId: null, status: 'online' });
+  broadcastPlayerList();
+}
+
+function terminateGameForSocket(socketId, notifyEvent = 'opponentLeft') {
   const player = players.get(socketId);
   if (!player?.currentGameId) {
     return;
@@ -229,7 +313,7 @@ function resetGameIfIncomplete(socketId) {
       opponent.status = 'online';
       opponent.currentGameId = null;
       players.set(opponentId, opponent);
-      io.to(opponentId).emit('opponentLeft');
+      io.to(opponentId).emit(notifyEvent, { name: player?.name || 'Opponent' });
     }
   }
   games.delete(game.id);
@@ -248,6 +332,94 @@ io.on('connection', (socket) => {
     });
     socket.emit('playerRegistered', { socketId: socket.id, name: safeName });
     broadcastPlayerList();
+  });
+
+  socket.on('requestReconnect', ({ gameId, playerName }) => {
+    const game = games.get(gameId);
+    if (!game || game.mode !== 'pvp') {
+      socket.emit('reconnectUnavailable');
+      return;
+    }
+    const entry = findPlayerEntryByName(game, playerName);
+    if (!entry) {
+      socket.emit('reconnectUnavailable');
+      return;
+    }
+    const [playerId, player] = entry;
+    if (player.connected && playerId !== socket.id) {
+      socket.emit('reconnectUnavailable');
+      return;
+    }
+    if (playerId !== socket.id) {
+      reassignPlayerSocket(game, playerId, socket.id);
+    } else {
+      player.connected = true;
+    }
+    socket.join(game.id);
+    players.set(socket.id, {
+      socketId: socket.id,
+      name: player.name,
+      status: 'online',
+      currentGameId: game.id,
+    });
+    game.reconnectPending = true;
+    game.reconnectVotes = {};
+    const opponentId = Object.keys(game.players).find((id) => id !== socket.id);
+    const opponentName = opponentId ? game.players[opponentId]?.name : 'Opponent';
+    socket.emit('reconnectPrompt', { gameId: game.id, opponentName });
+    if (opponentId) {
+      io.to(opponentId).emit('reconnectPrompt', {
+        gameId: game.id,
+        opponentName: player.name,
+      });
+    }
+    broadcastPlayerList();
+  });
+
+  socket.on('reconnectDecision', ({ gameId, accept }) => {
+    const game = games.get(gameId);
+    if (!game) {
+      socket.emit('reconnectUnavailable');
+      return;
+    }
+    const player = game.players[socket.id];
+    if (!player) {
+      socket.emit('reconnectUnavailable');
+      return;
+    }
+    const opponentId = Object.keys(game.players).find((id) => id !== socket.id);
+    const opponentName = opponentId ? game.players[opponentId]?.name : 'Opponent';
+    if (!accept) {
+      if (opponentId) {
+        io.to(opponentId).emit('reconnectDeclined', { name: player.name });
+        const opponent = players.get(opponentId);
+        if (opponent) {
+          opponent.currentGameId = null;
+          opponent.status = 'online';
+          players.set(opponentId, opponent);
+        }
+      }
+      players.set(socket.id, { socketId: socket.id, name: player.name, status: 'online', currentGameId: null });
+      games.delete(game.id);
+      broadcastPlayerList();
+      return;
+    }
+    game.reconnectVotes = game.reconnectVotes || {};
+    game.reconnectVotes[player.name] = true;
+    io.to(socket.id).emit('reconnectWaiting', { opponentName });
+    const playerNames = Object.values(game.players).map((p) => p.name);
+    const allAccepted = playerNames.every((name) => game.reconnectVotes[name]);
+    if (allAccepted) {
+      game.reconnectPending = false;
+      Object.keys(game.players).forEach((id) => {
+        const payload = buildReconnectPayload(game, id);
+        if (!payload.playerBoard || !payload.opponentBoard) {
+          io.to(id).emit('reconnectUnavailable');
+          return;
+        }
+        io.to(id).emit('reconnectState', payload);
+      });
+    }
   });
 
   socket.on('requestPlayerList', () => {
@@ -342,7 +514,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('cancelMatch', () => {
-    resetGameIfIncomplete(socket.id);
+    terminateGameForSocket(socket.id);
   });
 
   socket.on('submitBoard', ({ gameId, board, pieces }) => {
@@ -369,6 +541,7 @@ io.on('connection', (socket) => {
     io.to(game.id).emit('playerReady', { socketId: socket.id });
     const allReady = Object.values(game.players).every((p) => p.ready);
     if (allReady) {
+      game.started = true;
       if (!Array.isArray(game.order) || game.order.length === 0) {
         const playerIds = Object.keys(game.players);
         game.order = playerIds.sort(() => Math.random() - 0.5);

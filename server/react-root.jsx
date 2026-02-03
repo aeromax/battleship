@@ -204,6 +204,29 @@ const WaitingForOpponentDialog = () => (
   <div id="waitingForOpponentModal" className="modal hidden" role="status" aria-live="polite">
     <div className="modal-content waiting flex-column align-center">
       <p id="waitingForOpponentMessage" className="modal-message"></p>
+      <button
+        id="waitingForOpponentRestartBtn"
+        type="button"
+        className="button primary hidden"
+      >
+        Restart
+      </button>
+    </div>
+  </div>
+);
+
+const ReconnectDialog = () => (
+  <div id="reconnectModal" className="modal hidden" role="dialog" aria-modal="true">
+    <div className="modal-content match-request">
+      <p id="reconnectMessage" className="modal-message"></p>
+      <div className="modal-actions flex-row flex-gap-sm justify-center">
+        <button id="reconnectConfirmBtn" type="button" className="button primary">
+          Affirmative
+        </button>
+        <button id="reconnectDenyBtn" type="button" className="button secondary">
+          Negative
+        </button>
+      </div>
     </div>
   </div>
 );
@@ -321,29 +344,42 @@ const StyleGuide = () => (
     </header>
 
     <section className="style-grid">
-      <div className="panel style-card">
+      <div className="panel style-card style-card--full">
         <div className="panel--head">Buttons</div>
         <div className="panel--divider"></div>
         <div className="style-stack">
           <div className="style-row flex-row flex-wrap flex-gap-sm">
-            <button className="button primary">Primary</button>
-            <button className="button secondary">Secondary</button>
-            <button className="button red">Destructive</button>
-          </div>
-          <div className="style-row flex-row flex-wrap flex-gap-sm">
-            <button className="button primary large">Large Action</button>
-            <button className="button secondary small">Small</button>
+            <button className="button primary">Default</button>
+            <button className="button primary is-hover">Primary Hover</button>
             <button className="button primary disabled" disabled>Disabled</button>
-          </div>
-          <div className="style-row flex-row flex-wrap flex-gap-sm">
             <button className="button primary">
               <span className="material-symbols-outlined">bolt</span>
               With Icon
             </button>
+            <button className="button primary large">Large</button>
+            <button className="button primary small">Small</button>
+          </div>
+          <div className="style-row flex-row flex-wrap flex-gap-sm">
+            <button className="button secondary">Default</button>
+            <button className="button secondary is-hover">Secondary Hover</button>
+            <button className="button secondary disabled" disabled>Disabled</button>
             <button className="button secondary">
               <span className="material-symbols-outlined">radar</span>
               Scanner
             </button>
+            <button className="button secondary  large">Large</button>
+            <button className="button secondary  small">Small</button>
+          </div>
+          <div className="style-row flex-row flex-wrap flex-gap-sm">
+            <button className="button red">Default</button>
+            <button className="button red is-hover">Red Hover</button>
+            <button className="button red disabled" disabled>Disabled</button>
+            <button className="button secondary">
+              <span className="material-symbols-outlined">radar</span>
+              Scanner
+            </button>
+            <button className="button  red large">Large</button>
+            <button className="button  red small">Small</button>
           </div>
         </div>
       </div>
@@ -476,6 +512,7 @@ function AppShell() {
           <MatchRequestDialog />
           <MatchConnectingDialog />
           <WaitingForOpponentDialog />
+          <ReconnectDialog />
         </>
       )}
     </div>
