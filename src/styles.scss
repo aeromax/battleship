@@ -884,10 +884,10 @@ button.red {
     border 0.1s ease;
   touch-action: none;
   &.drag-preview {
-    // border-color: fw.$color-secondary;
-    // outline: 2px solid rgba(fw.$color-secondary, 0.6);
-    // outline-offset: -2px;
-    // box-shadow: inset 0 0 0 1px rgba(fw.$color-secondary, 0.2);
+    border-color: fw.$color-secondary;
+    outline: 2px solid rgba(fw.$color-secondary, 1);
+    outline-offset: -2px;
+    box-shadow: inset 0 0 0 1px rgba(fw.$color-secondary, 0.2);
 
     background-color: rgba(229, 229, 247, 0);
     opacity: 0.3;
