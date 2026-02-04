@@ -34,6 +34,7 @@ const state = {
   dieComplete: false,
   attackHistory: new Set(),
   attackResults: {},
+  attackDestroyedUnits: [],
   opponentAttackHistory: new Set(),
   aiBoard: null,
   aiUnits: [],
@@ -1205,6 +1206,81 @@ function cloneBoard(board) {
   };
 }
 
+function buildDestroyedUnitsFromBoard(board) {
+  if (!board?.units || !board?.cells) return [];
+  return board.units
+    .filter((unit) => unit.coordinates.every((coord) => board.cells[coord]?.hit))
+    .map((unit) => ({
+      name: unit.name,
+      size: unit.size,
+      coordinates: [...unit.coordinates],
+    }));
+}
+
+function normalizeDestroyedUnit(unit) {
+  if (!unit) return null;
+  if (typeof unit === 'string') {
+    const meta = AVAILABLE_UNITS.find((item) => item.name === unit);
+    return {
+      name: unit,
+      size: meta?.size || 0,
+      coordinates: [],
+    };
+  }
+  const coordinates = Array.isArray(unit.coordinates) ? [...unit.coordinates] : [];
+  const fallback = AVAILABLE_UNITS.find((item) => item.name === unit.name);
+  return {
+    name: unit.name,
+    size: unit.size || coordinates.length || fallback?.size || 0,
+    coordinates,
+  };
+}
+
+function registerDestroyedAttackUnit(unit) {
+  const normalized = normalizeDestroyedUnit(unit);
+  if (!normalized || !normalized.coordinates.length) return;
+  const existing = state.attackDestroyedUnits.find((entry) => entry.name === normalized.name);
+  if (existing) {
+    if (!existing.coordinates.length) {
+      existing.coordinates = [...normalized.coordinates];
+      existing.size = normalized.size || existing.size;
+    }
+    return;
+  }
+  state.attackDestroyedUnits.push(normalized);
+}
+
+function buildAttackIntelBoard() {
+  const board = createEmptyBoard();
+  let destroyedUnits = [];
+  if (state.mode === GAME_MODES.SOLO && state.aiBoard) {
+    destroyedUnits = buildDestroyedUnitsFromBoard(state.aiBoard);
+  } else {
+    destroyedUnits = state.attackDestroyedUnits || [];
+  }
+  const units = destroyedUnits
+    .map((unit) => {
+      const coordinates = Array.isArray(unit.coordinates) ? [...unit.coordinates] : [];
+      if (!coordinates.length) return null;
+      const fallback = AVAILABLE_UNITS.find((item) => item.name === unit.name);
+      return {
+        name: unit.name,
+        size: unit.size || coordinates.length || fallback?.size || 0,
+        coordinates,
+      };
+    })
+    .filter(Boolean);
+  units.forEach((unit) => {
+    unit.coordinates.forEach((coord) => {
+      if (board.cells[coord]) {
+        board.cells[coord].occupant = unit.name;
+      }
+    });
+  });
+  board.units = units;
+  return board;
+}
+
 function coordinateToIndices(coordinate) {
   const match = /^([A-I])([1-9])$/.exec(coordinate);
   if (!match) return null;
@@ -1501,6 +1577,7 @@ function renderPlayerBoard() {
 function renderAttackBoard() {
   const { attack } = elements.boards;
   attack.innerHTML = '';
+  const intelBoard = buildAttackIntelBoard();
   COLUMNS.forEach((column) => {
     ROWS.forEach((row) => {
       const coord = `${row}${column}`;
@@ -1515,6 +1592,15 @@ function renderAttackBoard() {
       } else if (state.mode === GAME_MODES.SOLO && state.aiBoard?.cells?.[coord]?.hit) {
         cellEl.classList.add(
           state.aiBoard.cells[coord].occupant ? 'hit' : 'miss',
+        );
+      }
+      const intelMeta = getUnitRenderMeta(intelBoard, coord);
+      if (intelMeta && intelMeta.anchor === coord) {
+        cellEl.classList.add('unit-destroyed');
+        appendUnitImage(cellEl, intelMeta.unit, intelMeta.orientation);
+        cellEl.setAttribute(
+          'aria-label',
+          `${intelMeta.unit.name} wreckage detected at ${coord}`,
         );
       }
       const coordLabel = document.createElement('span');
@@ -1682,6 +1768,7 @@ function resetSessionState({ clearLocalSave = false } = {}) {
   state.attackSelection = null;
   state.attackHistory = new Set();
   state.attackResults = {};
+  state.attackDestroyedUnits = [];
   state.opponentAttackHistory = new Set();
   state.statusMessages = [];
   state.playerBoard = createEmptyBoard();
@@ -2107,6 +2194,7 @@ function applyReconnectState(payload) {
       state.attackResults[coord] = 'miss';
     }
   });
+  state.attackDestroyedUnits = buildDestroyedUnitsFromBoard(opponentBoard);
   state.setupLocked = true;
   state.dieComplete = true;
   state.gameStarted = true;
@@ -2261,6 +2349,7 @@ function startPvpMatchSession({ gameId, opponentName }) {
   });
   state.attackHistory = new Set();
   state.attackResults = {};
+  state.attackDestroyedUnits = [];
   state.opponentAttackHistory = new Set();
   state.playerBoard = createEmptyBoard();
   state.aiBoard = createEmptyBoard();
@@ -2293,6 +2382,7 @@ function setupSoloSession() {
   state.opponentName = pickAiCallsign();
   updateTopRailTitle();
   resetRoundCounter();
+  state.attackDestroyedUnits = [];
   renderUnitList();
   resetPlacementBoard();
   state.aiBoard = createEmptyBoard();
@@ -2486,6 +2576,11 @@ async function finalizePlayerAttack() {
     if (result.hit) {
       pushStatus(COPY.status.directHit(coordinate), 'success');
       if (result.destroyed) {
+        const destroyedUnit = state.aiBoard?.units?.find((unit) => unit.name === result.destroyed);
+        if (destroyedUnit) {
+          registerDestroyedAttackUnit(destroyedUnit);
+          renderAttackBoard();
+        }
         pushStatus(COPY.status.enemyUnitDestroyed(opponentLabel, result.destroyed), 'success');
         showOverlayBanner(`You destroyed ${possessiveLabel(opponentLabel)} ${result.destroyed}!`);
       }
@@ -2931,8 +3026,16 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
       if (result.hit) {
         pushStatus(COPY.status.directHit(coordinate), 'success');
         if (result.destroyedUnit) {
-          pushStatus(COPY.status.enemyUnitDestroyed(opponentLabel, result.destroyedUnit), 'success');
-          showOverlayBanner(`You destroyed ${possessiveLabel(opponentLabel)} ${result.destroyedUnit}!`);
+          const destroyedName =
+            typeof result.destroyedUnit === 'string'
+              ? result.destroyedUnit
+              : result.destroyedUnit?.name;
+          if (destroyedName) {
+            registerDestroyedAttackUnit(result.destroyedUnit);
+            renderAttackBoard();
+            pushStatus(COPY.status.enemyUnitDestroyed(opponentLabel, destroyedName), 'success');
+            showOverlayBanner(`You destroyed ${possessiveLabel(opponentLabel)} ${destroyedName}!`);
+          }
         }
       } else {
         pushStatus(COPY.status.attackUnsuccessful, 'info');
@@ -3058,6 +3161,7 @@ function loadSavedGame(data) {
     state.playerTurn = data.player.turn;
     state.attackHistory = new Set(data.player.attackHistory || []);
     state.attackResults = {};
+    state.attackDestroyedUnits = [];
     state.attackHistory.forEach((coord) => {
       const cell = state.aiBoard?.cells?.[coord];
       if (!cell || !cell.hit) {

@@ -1131,6 +1131,7 @@ button.red.disabled {
 
 #attackBoard {
   border: none;
+  --cell-gap: 1px;
 }
 #attackBoard .board {
   background: none;
@@ -1153,6 +1154,52 @@ button.red.disabled {
 }
 #attackBoard .cell:hover {
   border-color: rgba(239, 239, 239, 0.6);
+}
+#attackBoard .cell.unit-anchor {
+  position: relative;
+  overflow: visible;
+  z-index: 1;
+}
+#attackBoard .cell.unit-anchor .unit-image-wrap {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.85;
+}
+#attackBoard .cell.unit-anchor .unit-image-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0.85;
+  filter: drop-shadow(0 2px 6px rgba(9, 16, 30, 0.6));
+  transition: transform 0.12s ease, opacity 0.12s ease, filter 0.12s ease;
+  transform-origin: center;
+}
+#attackBoard .cell.unit-anchor.unit-destroyed .unit-image-wrap img {
+  opacity: 0.7;
+  filter: grayscale(0.85) brightness(0.6);
+}
+#attackBoard .cell.unit-anchor .unit-image-wrap.wrap-horizontal {
+  left: calc((100% + var(--cell-gap)) * var(--unit-length, 1) / 2 - var(--cell-gap));
+  top: 50%;
+  height: calc((100% + var(--cell-gap)) * var(--unit-length, 1) - var(--cell-gap));
+  width: calc((100% + var(--cell-gap)) * var(--unit-length, 1) - var(--cell-gap));
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+}
+#attackBoard .cell.unit-anchor .unit-image-wrap.wrap-vertical {
+  left: 50%;
+  top: 0;
+  width: 100%;
+  height: calc((100% + var(--cell-gap)) * var(--unit-length, 1) - var(--cell-gap));
+  transform: translateX(-50%);
+  transform-origin: top center;
+}
+#attackBoard .cell.unit-anchor.unit-horizontal .unit-image-wrap img {
+  transform: rotate(90deg);
+}
+#attackBoard .cell.unit-anchor.unit-vertical .unit-image-wrap img {
+  transform: rotate(0deg);
 }
 #attackBoard .cell.selected-target {
   border-color: rgba(255, 93, 93, 0.8);

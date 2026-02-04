@@ -773,7 +773,10 @@ function resolveAttack({ opponent, coordinate }) {
   if (unitRecord) {
     const destroyed = unitRecord.coordinates.every((coord) => board.cells[coord]?.hit);
     if (destroyed) {
-      destroyedUnit = unitRecord.name;
+      destroyedUnit = {
+        name: unitRecord.name,
+        coordinates: [...unitRecord.coordinates],
+      };
     }
   }
   const hit = Boolean(cell.occupant);
