@@ -430,9 +430,30 @@ h1 {
   width: min(420px, 90vw);
 }
 
+.modal-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .modal-message {
   margin: 0;
   font-size: 1.5rem;
+}
+
+.modal-prompt {
+  margin: 1rem 0 0;
+  font-size: 1rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.modal-status {
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .modal-actions {
@@ -952,6 +973,10 @@ button.red.disabled {
   touch-action: none;
 }
 .board .cell.drag-preview {
+  border-color: #7fff00;
+  outline: 2px solid chartreuse;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 1px rgba(127, 255, 0, 0.2);
   background-color: rgba(229, 229, 247, 0);
   opacity: 0.3;
   background-size: 10px 10px;

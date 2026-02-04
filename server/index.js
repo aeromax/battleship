@@ -188,6 +188,7 @@ async function createGameRecord({ creatorId, opponentId }) {
     currentTurn: null,
     winner: null,
     history: [],
+    rematchVotes: {},
     lastUpdate: createdAt,
   };
   games.set(id, record);
@@ -212,6 +213,26 @@ function serializeGame(record) {
     history: record.history,
     lastUpdate: record.lastUpdate,
   };
+}
+
+function resetGameForRematch(game) {
+  game.started = false;
+  game.winner = null;
+  game.history = [];
+  game.order = [];
+  game.currentTurn = null;
+  game.reconnectPending = false;
+  game.reconnectVotes = {};
+  game.rematchVotes = {};
+  Object.values(game.players).forEach((player) => {
+    player.ready = false;
+    player.board = null;
+    player.shots = new Set();
+    player.destroyed = [];
+    player.connected = true;
+    player.dieRoll = null;
+  });
+  game.lastUpdate = Date.now();
 }
 
 function findPlayerEntryByName(game, playerName) {
@@ -664,6 +685,54 @@ io.on('connection', (socket) => {
       result,
     });
     io.to(game.id).emit('gameState', serializeGame(game));
+  });
+
+  socket.on('rematchDecision', ({ gameId, accept }) => {
+    const game = games.get(gameId);
+    if (!game) {
+      socket.emit('matchError', { message: 'Game not found.' });
+      return;
+    }
+    const player = game.players[socket.id];
+    if (!player) {
+      socket.emit('matchError', { message: 'Player not part of game.' });
+      return;
+    }
+    const opponentId = Object.keys(game.players).find((id) => id !== socket.id);
+    const opponent = opponentId ? game.players[opponentId] : null;
+    if (!accept) {
+      const declineName = player.name || 'Opponent';
+      const playerEntry = players.get(socket.id);
+      const opponentEntry = opponentId ? players.get(opponentId) : null;
+      if (playerEntry) {
+        playerEntry.status = 'online';
+        playerEntry.currentGameId = null;
+        players.set(socket.id, playerEntry);
+      }
+      if (opponentEntry) {
+        opponentEntry.status = 'online';
+        opponentEntry.currentGameId = null;
+        players.set(opponentId, opponentEntry);
+      }
+      io.to(game.id).emit('rematchDeclined', { name: declineName });
+      games.delete(game.id);
+      broadcastPlayerList();
+      return;
+    }
+    game.rematchVotes = game.rematchVotes || {};
+    game.rematchVotes[socket.id] = true;
+    socket.emit('rematchWaiting', { opponentName: opponent?.name || 'Opponent' });
+    const allAccepted = Object.keys(game.players).every((id) => game.rematchVotes[id]);
+    if (allAccepted) {
+      resetGameForRematch(game);
+      Object.keys(game.players).forEach((id) => {
+        const otherId = Object.keys(game.players).find((entryId) => entryId !== id);
+        io.to(id).emit('rematchStarted', {
+          gameId: game.id,
+          opponentName: otherId ? game.players[otherId]?.name : 'Opponent',
+        });
+      });
+    }
   });
 
   socket.on('saveMultiplayer', ({ gameId, playerName }) => {

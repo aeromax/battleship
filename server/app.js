@@ -173,6 +173,10 @@ const reconnectDialogState = {
   gameId: null,
   opponentName: null,
 };
+const rematchState = {
+  active: false,
+  voted: null,
+};
 let outgoingRejectionTimer = null;
 
 function playSfx(path) {
@@ -842,6 +846,12 @@ function collectElements(root = document) {
       postGameMessage: root.getElementById
         ? root.getElementById('postGameMessage')
         : root.querySelector('#postGameMessage'),
+      postGamePrompt: root.getElementById
+        ? root.getElementById('postGamePrompt')
+        : root.querySelector('#postGamePrompt'),
+      postGameStatus: root.getElementById
+        ? root.getElementById('postGameStatus')
+        : root.querySelector('#postGameStatus'),
     },
     panels: {
       soloOptions: root.getElementById ? root.getElementById('soloOptions') : root.querySelector('#soloOptions'),
@@ -1658,6 +1668,42 @@ function handleMenuKeydown(event) {
   }
 }
 
+function resetSessionState({ clearLocalSave = false } = {}) {
+  hideWaitingForOpponentDialog();
+  clearMpReconnect();
+  state.mode = null;
+  state.gameId = null;
+  state.gameStarted = false;
+  state.setupLocked = false;
+  state.dieComplete = false;
+  state.playerTurn = false;
+  endRound();
+  state.currentTurnSocket = null;
+  state.attackSelection = null;
+  state.attackHistory = new Set();
+  state.attackResults = {};
+  state.opponentAttackHistory = new Set();
+  state.statusMessages = [];
+  state.playerBoard = createEmptyBoard();
+  state.aiBoard = createEmptyBoard();
+  state.aiShots = new Set();
+  renderStatusFeed();
+  renderPlayerBoard();
+  renderAttackBoard();
+  setTurnBanner('Awaiting orders...');
+  syncAttackInterface();
+  updateBeforeUnloadGuard();
+
+  toggleModal('postGame', false);
+  toggleModal('mode', false);
+  switchScreen(MODES.HOME);
+  resetPlacementBoard();
+  if (clearLocalSave) {
+    removeLocalSave(state.playerName);
+  }
+  resetRematchState();
+}
+
 function handleMenuAction(action) {
   switch (action) {
     case 'home':
@@ -1680,36 +1726,7 @@ function handleMenuAction(action) {
       if (state.mode === GAME_MODES.SOLO && state.gameStarted) {
         pushStatus(COPY.status.missionAborted, 'warning');
       }
-      state.mode = null;
-      state.gameId = null;
-      state.gameStarted = false;
-      state.setupLocked = false;
-      state.dieComplete = false;
-      state.playerTurn = false;
-      endRound();
-      state.currentTurnSocket = null;
-      state.attackSelection = null;
-      state.attackHistory = new Set();
-      state.attackResults = {};
-      state.opponentAttackHistory = new Set();
-      state.statusMessages = [];
-      state.playerBoard = createEmptyBoard();
-      state.aiBoard = createEmptyBoard();
-      state.aiShots = new Set();
-      renderStatusFeed();
-      renderPlayerBoard();
-      renderAttackBoard();
-      setTurnBanner('Awaiting orders...');
-      syncAttackInterface();
-      updateBeforeUnloadGuard();
-
-      toggleModal('postGame', false);
-      toggleModal('mode', false);
-      switchScreen(MODES.HOME);
-      resetPlacementBoard();
-      if (shouldClearLocalSave) {
-        removeLocalSave(state.playerName);
-      }
+      resetSessionState({ clearLocalSave: shouldClearLocalSave });
       break;
     }
     default:
@@ -2158,13 +2175,120 @@ function enterPvpLobby() {
   socket.emit('requestPlayerList');
 }
 
+function resetRematchState() {
+  rematchState.active = false;
+  rematchState.voted = null;
+}
+
+function setPostGamePrompt(message) {
+  if (!elements?.hud?.postGamePrompt) return;
+  elements.hud.postGamePrompt.textContent = message || '';
+  elements.hud.postGamePrompt.classList.toggle('hidden', !message);
+}
+
+function setPostGameStatus(message) {
+  if (!elements?.hud?.postGameStatus) return;
+  elements.hud.postGameStatus.textContent = message || '';
+  elements.hud.postGameStatus.classList.toggle('hidden', !message);
+}
+
+function setPostGameButtons({
+  disableYes = false,
+  disableNo = false,
+  noLabel = 'No',
+  yesLabel = 'Yes',
+} = {}) {
+  if (elements?.buttons?.playAgain) {
+    elements.buttons.playAgain.textContent = yesLabel;
+    elements.buttons.playAgain.disabled = disableYes;
+    elements.buttons.playAgain.classList.toggle('disabled', disableYes);
+  }
+  if (elements?.buttons?.returnHome) {
+    elements.buttons.returnHome.textContent = noLabel;
+    elements.buttons.returnHome.disabled = disableNo;
+    elements.buttons.returnHome.classList.toggle('disabled', disableNo);
+  }
+}
+
 function showPostGameModal(title, message) {
   elements.hud.postGameTitle.textContent = title;
   elements.hud.postGameMessage.textContent = message;
+  setPostGamePrompt('Play again?');
+  setPostGameStatus('');
+  setPostGameButtons({ disableYes: false, disableNo: false, noLabel: 'No', yesLabel: 'Yes' });
+  rematchState.active = true;
+  rematchState.voted = null;
   toggleModal('postGame', true);
 }
 
+function handlePostGameDecision(accept) {
+  if (!rematchState.active) return;
+  if (state.mode === GAME_MODES.SOLO) {
+    toggleModal('postGame', false);
+    if (accept) {
+      setupSoloSession();
+    } else {
+      resetSessionState({ clearLocalSave: true });
+    }
+    return;
+  }
+  if (state.mode !== GAME_MODES.PVP || !state.gameId) {
+    toggleModal('postGame', false);
+    return;
+  }
+  rematchState.voted = accept;
+  if (accept) {
+    setPostGameButtons({ disableYes: true, disableNo: true });
+    setPostGameStatus(`Waiting for ${state.opponentName || 'opponent'}...`);
+    socket.emit('rematchDecision', { gameId: state.gameId, accept: true });
+    return;
+  }
+  socket.emit('rematchDecision', { gameId: state.gameId, accept: false });
+  resetSessionState({ clearLocalSave: false });
+}
+
+function startPvpMatchSession({ gameId, opponentName }) {
+  resetRematchState();
+  hideWaitingForOpponentDialog();
+  state.mode = GAME_MODES.PVP;
+  state.gameId = gameId;
+  state.opponentName = opponentName;
+  updateTopRailTitle();
+  writeMpReconnect({
+    gameId,
+    playerName: state.playerName,
+    opponentName,
+  });
+  state.attackHistory = new Set();
+  state.attackResults = {};
+  state.opponentAttackHistory = new Set();
+  state.playerBoard = createEmptyBoard();
+  state.aiBoard = createEmptyBoard();
+  state.setupLocked = false;
+  state.dieComplete = false;
+  state.playerTurn = false;
+  state.gameStarted = false;
+  state.attackSelection = null;
+  state.currentTurnSocket = null;
+  state.roundNumber = 0;
+  state.roundActive = false;
+  state.statusMessages = [];
+  state.continuePayload = null;
+  state.awaitingSave = false;
+  state.draggingUnit = null;
+  resetPlacementBoard();
+  renderStatusFeed();
+  setTurnBanner('Deploy your forces');
+  syncAttackInterface();
+  toggleModal('mode', false);
+  toggleModal('postGame', false);
+  switchScreen(MODES.SETUP);
+  pushStatus('Play request accepted. Deploy your fleet.', 'success');
+  updateBeforeUnloadGuard();
+}
+
 function setupSoloSession() {
+  resetRematchState();
   state.mode = GAME_MODES.SOLO;
   state.opponentName = pickAiCallsign();
   updateTopRailTitle();
@@ -2562,6 +2686,12 @@ function setupEventListeners() {
   if (elements?.buttons?.matchDeny) {
     elements.buttons.matchDeny.addEventListener('click', () => handleMatchResponse(false));
   }
+  if (elements?.buttons?.playAgain) {
+    elements.buttons.playAgain.addEventListener('click', () => handlePostGameDecision(true));
+  }
+  if (elements?.buttons?.returnHome) {
+    elements.buttons.returnHome.addEventListener('click', () => handlePostGameDecision(false));
+  }
 
   if (elements?.buttons?.randomize) {
     elements.buttons.randomize.addEventListener('click', () => {
@@ -2744,41 +2874,7 @@ socket.on('reconnectUnavailable', () => {
 socket.on('matchStarted', ({ gameId, opponentName }) => {
   hideIncomingMatchRequest();
   hideOutgoingMatchRequest();
-  state.mode = GAME_MODES.PVP;
-  state.gameId = gameId;
-  state.opponentName = opponentName;
-  updateTopRailTitle();
-  writeMpReconnect({
-    gameId,
-    playerName: state.playerName,
-    opponentName,
-  });
-  state.attackHistory = new Set();
-  state.attackResults = {};
-  state.opponentAttackHistory = new Set();
-  state.playerBoard = createEmptyBoard();
-  state.aiBoard = createEmptyBoard();
-  state.setupLocked = false;
-  state.dieComplete = false;
-  state.playerTurn = false;
-  state.gameStarted = false;
-  state.attackSelection = null;
-  state.currentTurnSocket = null;
-  state.roundNumber = 0;
-  state.roundActive = false;
-  state.statusMessages = [];
-  state.continuePayload = null;
-  state.awaitingSave = false;
-  state.draggingUnit = null;
-  resetPlacementBoard();
-  renderStatusFeed();
-  setTurnBanner('Deploy your forces');
-  syncAttackInterface();
-  toggleModal('mode', false);
-  toggleModal('postGame', false);
-  switchScreen(MODES.SETUP);
-  pushStatus('Play request accepted. Deploy your fleet.', 'success');
-  updateBeforeUnloadGuard();
+  startPvpMatchSession({ gameId, opponentName });
 });
 
 socket.on('playerReady', ({ socketId }) => {
@@ -2886,6 +2982,29 @@ socket.on('gameOver', ({ winner, winnerName }) => {
       : `${winnerName || 'Opponent'} secured the battlefield.`,
   );
   updateBeforeUnloadGuard();
+});
+
+socket.on('rematchWaiting', ({ opponentName }) => {
+  if (state.mode !== GAME_MODES.PVP) return;
+  setPostGameStatus(`Waiting for ${opponentName || 'opponent'}...`);
+  setPostGameButtons({ disableYes: true, disableNo: true });
+});
+
+socket.on('rematchDeclined', ({ name }) => {
+  if (state.mode !== GAME_MODES.PVP || !state.gameId) return;
+  elements.hud.postGameTitle.textContent = 'Play Again';
+  elements.hud.postGameMessage.textContent = `${name || 'Opponent'} declined to play again.`;
+  setPostGamePrompt('');
+  setPostGameStatus('');
+  setPostGameButtons({ disableYes: true, disableNo: false, noLabel: 'Return to main screen' });
+  rematchState.active = true;
+  toggleModal('postGame', true);
+});
+
+socket.on('rematchStarted', ({ gameId, opponentName }) => {
+  hideIncomingMatchRequest();
+  hideOutgoingMatchRequest();
+  startPvpMatchSession({ gameId, opponentName });
 });
 
 socket.on('gameState', (payload) => {

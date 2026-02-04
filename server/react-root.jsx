@@ -232,6 +232,25 @@ const ReconnectDialog = () => (
   </div>
 );
 
+const PostGameDialog = () => (
+  <div id="postGameModal" className="modal hidden" role="dialog" aria-modal="true">
+    <div className="modal-content post-game">
+      <h2 id="postGameTitle" className="modal-title"></h2>
+      <p id="postGameMessage" className="modal-message"></p>
+      <p id="postGamePrompt" className="modal-prompt"></p>
+      <p id="postGameStatus" className="modal-status" aria-live="polite"></p>
+      <div className="modal-actions flex-row flex-gap-sm justify-center">
+        <button id="playAgainBtn" type="button" className="button primary">
+          Yes
+        </button>
+        <button id="returnHomeBtn" type="button" className="button secondary">
+          No
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 const AttackBoardPanel = () => (
   <div id="attack-board" className="panel attack-board-panel flex-column flex-between flex-gap-md">
     <MapGrid boardId="attackBoard" showAxis={false} showCellCoords />
@@ -515,6 +534,7 @@ function AppShell() {
           <MatchConnectingDialog />
           <WaitingForOpponentDialog />
           <ReconnectDialog />
+          <PostGameDialog />
         </>
       )}
     </div>

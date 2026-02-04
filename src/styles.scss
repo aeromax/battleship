@@ -302,9 +302,30 @@ h1 {
   width: min(420px, 90vw);
 }
 
+.modal-title {
+  margin: 0 0 fw.$spacing-sm 0;
+  font-size: 1.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .modal-message {
   margin: 0;
   font-size: fw.$text-size-large;
+}
+
+.modal-prompt {
+  margin: fw.$spacing-md 0 0;
+  font-size: 1rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.modal-status {
+  margin: fw.$spacing-sm 0 0;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .modal-actions {
