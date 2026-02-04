@@ -42,6 +42,8 @@ const state = {
   continuePayload: null,
   awaitingSave: false,
   draggingUnit: null,
+  movingUnit: null,
+  dragOffset: null,
   roundNumber: 0,
   roundActive: false,
 };
@@ -226,6 +228,7 @@ let touchDragPreviewEl = null;
 let touchDragPreviewSource = null;
 let touchDragActive = false;
 let globalDragEndHandlersBound = false;
+let transparentDragImage = null;
 
 
 function syncAttackInterface() {
@@ -347,7 +350,7 @@ function previewPlacementFromPoint(point) {
   const previewCoords = canPlaceUnit(
     state.placementBoard,
     state.draggingUnit,
-    cell.dataset.coord,
+    getDragStartCoordinate(cell.dataset.coord),
     state.orientation,
   );
   if (!previewCoords) {
@@ -356,6 +359,70 @@ function previewPlacementFromPoint(point) {
   }
   previewPlacementCells(previewCoords);
   return cell;
+}
+
+function beginMovingUnit(unit, grabCoordinate = null) {
+  if (!unit || state.setupLocked) return false;
+  state.selectedUnit = unit;
+  state.draggingUnit = unit;
+  state.orientation = getUnitOrientation(unit);
+  state.movingUnit = {
+    name: unit.name,
+    coordinates: [...unit.coordinates],
+  };
+  state.dragOffset = null;
+  if (grabCoordinate) {
+    const anchor = getUnitAnchorCoordinate(unit, state.orientation);
+    const anchorIndices = coordinateToIndices(anchor);
+    const grabIndices = coordinateToIndices(grabCoordinate);
+    if (anchorIndices && grabIndices) {
+      if (state.orientation === 'horizontal') {
+        state.dragOffset = grabIndices.rowIndex - anchorIndices.rowIndex;
+      } else {
+        state.dragOffset = grabIndices.columnIndex - anchorIndices.columnIndex;
+      }
+    }
+  }
+  return true;
+}
+
+function restoreMovingUnit() {
+  if (!state.movingUnit) return;
+  state.movingUnit = null;
+  state.draggingUnit = null;
+  state.dragOffset = null;
+}
+
+function getPlacementAnchorCellFromEvent(event) {
+  if (!event?.target?.closest) return null;
+  return event.target.closest('.cell');
+}
+
+function getDragStartCoordinate(targetCoordinate) {
+  if (!state.draggingUnit || typeof state.dragOffset !== 'number') {
+    return targetCoordinate;
+  }
+  const indices = coordinateToIndices(targetCoordinate);
+  if (!indices) return null;
+  const rowIndex =
+    state.orientation === 'horizontal'
+      ? indices.rowIndex - state.dragOffset
+      : indices.rowIndex;
+  const columnIndex =
+    state.orientation === 'vertical'
+      ? indices.columnIndex - state.dragOffset
+      : indices.columnIndex;
+  return indicesToCoordinate(rowIndex, columnIndex);
+}
+
+function getTransparentDragImage() {
+  if (transparentDragImage) return transparentDragImage;
+  if (typeof document === 'undefined') return null;
+  const img = document.createElement('img');
+  img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+  img.alt = '';
+  transparentDragImage = img;
+  return img;
 }
 
 function handlePlacementPointerMove(event) {
@@ -379,7 +446,10 @@ function handlePlacementPointerEnd(event) {
   }
   const cell = previewPlacementFromPoint(event);
   if (cell?.dataset?.coord) {
-    attemptPlaceSelectedUnit(cell.dataset.coord);
+    const placed = attemptPlaceSelectedUnit(getDragStartCoordinate(cell.dataset.coord));
+    if (!placed) {
+      restoreMovingUnit();
+    }
   }
   deactivateTouchDrag();
 }
@@ -395,6 +465,7 @@ function deactivateTouchDrag() {
   if (state.draggingUnit) {
     state.draggingUnit = null;
   }
+  restoreMovingUnit();
   hideTouchDragPreview();
   clearDragPreview();
 }
@@ -425,7 +496,10 @@ function handlePlacementTouchEnd(event) {
   }
   const cell = previewPlacementFromPoint(touch);
   if (cell?.dataset?.coord) {
-    attemptPlaceSelectedUnit(cell.dataset.coord);
+    const placed = attemptPlaceSelectedUnit(getDragStartCoordinate(cell.dataset.coord));
+    if (!placed) {
+      restoreMovingUnit();
+    }
   }
   deactivateTouchDrag();
 }
@@ -444,7 +518,12 @@ function handlePlacementDragOver(event) {
     return;
   }
   const coordinate = cell.dataset.coord;
-  const previewCoords = canPlaceUnit(state.placementBoard, state.draggingUnit, coordinate, state.orientation);
+  const previewCoords = canPlaceUnit(
+    state.placementBoard,
+    state.draggingUnit,
+    getDragStartCoordinate(coordinate),
+    state.orientation,
+  );
   if (!previewCoords) {
     clearDragPreview();
     return;
@@ -462,6 +541,60 @@ function handlePlacementDragLeave(event) {
   clearDragPreview();
 }
 
+function handlePlacementUnitDragStart(event) {
+  if (state.setupLocked) return;
+  const cell = getPlacementAnchorCellFromEvent(event);
+  if (!cell || !cell.dataset?.coord) return;
+  const unit = getUnitAtCoordinate(state.placementBoard, cell.dataset.coord);
+  if (!unit) return;
+  const transfer = event.dataTransfer;
+  if (transfer) {
+    transfer.setData('text/plain', unit.name);
+    if (typeof transfer.setEffectAllowed === 'function') {
+      transfer.setEffectAllowed('move');
+    }
+    if (typeof transfer.setDragImage === 'function') {
+      const dragImage = getTransparentDragImage();
+      if (dragImage) {
+        transfer.setDragImage(dragImage, 0, 0);
+      }
+    }
+  }
+  beginMovingUnit(unit, cell.dataset.coord);
+}
+
+function handlePlacementUnitDragEnd() {
+  clearDragPreview();
+  restoreMovingUnit();
+}
+
+function handlePlacementUnitTouchStart(event) {
+  if (state.setupLocked) return;
+  const cell = getPlacementAnchorCellFromEvent(event);
+  if (!cell || !cell.dataset?.coord) return;
+  event.preventDefault();
+  const unit = getUnitAtCoordinate(state.placementBoard, cell.dataset.coord);
+  if (!unit) return;
+  touchDragActive = true;
+  showTouchDragPreview(cell);
+  positionTouchDragPreview(event.touches?.[0] || event);
+  beginMovingUnit(unit, cell.dataset.coord);
+}
+
+function handlePlacementUnitPointerStart(event) {
+  if (event.pointerType === 'mouse') return;
+  if (state.setupLocked) return;
+  const cell = getPlacementAnchorCellFromEvent(event);
+  if (!cell || !cell.dataset?.coord) return;
+  event.preventDefault();
+  const unit = getUnitAtCoordinate(state.placementBoard, cell.dataset.coord);
+  if (!unit) return;
+  touchDragActive = true;
+  showTouchDragPreview(cell);
+  positionTouchDragPreview(event);
+  beginMovingUnit(unit, cell.dataset.coord);
+}
+
 function handlePlacementDrop(event) {
   if (state.setupLocked) return;
   event.preventDefault();
@@ -471,7 +604,10 @@ function handlePlacementDrop(event) {
     state.draggingUnit = null;
     return;
   }
-  attemptPlaceSelectedUnit(cell.dataset.coord);
+  const placed = attemptPlaceSelectedUnit(getDragStartCoordinate(cell.dataset.coord));
+  if (!placed) {
+    restoreMovingUnit();
+  }
   clearDragPreview();
   state.draggingUnit = null;
 }
@@ -510,9 +646,13 @@ function bindGlobalDragEndHandlers() {
 function bindPlacementDragHandlers() {
   const placement = elements?.boards?.placement;
   if (!placement) return;
+  placement.addEventListener('dragstart', handlePlacementUnitDragStart);
+  placement.addEventListener('dragend', handlePlacementUnitDragEnd);
   placement.addEventListener('dragover', handlePlacementDragOver);
   placement.addEventListener('dragleave', handlePlacementDragLeave);
   placement.addEventListener('drop', handlePlacementDrop);
+  placement.addEventListener('touchstart', handlePlacementUnitTouchStart, { passive: false });
+  placement.addEventListener('pointerdown', handlePlacementUnitPointerStart);
   placement.addEventListener('touchmove', handlePlacementTouchMove, { passive: false });
   placement.addEventListener('pointermove', handlePlacementPointerMove, { passive: false });
   bindGlobalDragEndHandlers();
@@ -689,7 +829,7 @@ function collectElements(root = document) {
     hud: {
       statusFeed: root.getElementById ? root.getElementById('statusFeed') : root.querySelector('#statusFeed'),
       turnBanner: root.getElementById ? root.getElementById('turnBanner') : root.querySelector('#turnBanner'),
-      topRailTitle: root.getElementById ? root.getElementById('topRailTitle') : root.querySelector('#topRailTitle'),
+      topRailTitles: root.querySelectorAll ? root.querySelectorAll('.top-rail-title') : [],
       homeStatus: root.getElementById ? root.getElementById('homeStatus') : root.querySelector('#homeStatus'),
       homeStatusMessage: root.getElementById
         ? root.getElementById('homeStatusMessage')
@@ -1071,6 +1211,14 @@ function indicesToCoordinate(rowIndex, columnIndex) {
 
 function isSpaceFree(board, coordinate) {
   const cell = board.cells[coordinate];
+  if (
+    cell?.occupant &&
+    state.movingUnit &&
+    cell.occupant === state.movingUnit.name &&
+    state.movingUnit.coordinates.includes(coordinate)
+  ) {
+    return true;
+  }
   return Boolean(cell && !cell.occupant);
 }
 
@@ -1238,6 +1386,8 @@ function renderPlacementBoard() {
       const occupant = state.placementBoard.cells[coord].occupant;
       if (occupant) {
         cell.classList.add('occupied');
+        cell.dataset.unit = occupant;
+        cell.draggable = true;
         const meta = getUnitRenderMeta(state.placementBoard, coord);
         if (meta) {
           cell.title = `${meta.unit.name} (${coord})`;
@@ -1369,6 +1519,9 @@ function renderAttackBoard() {
 function renderUnitList() {
   elements.lists.unit.innerHTML = '';
   AVAILABLE_UNITS.forEach((unit) => {
+    if (state.placedUnits.some((placed) => placed.name === unit.name)) {
+      return;
+    }
     const item = document.createElement('div');
     item.className = 'unit-item';
     item.dataset.unit = unit.name;
@@ -1385,9 +1538,6 @@ function renderUnitList() {
     if (state.selectedUnit?.name === unit.name) {
       item.classList.add('selected');
     }
-    if (state.placedUnits.some((placed) => placed.name === unit.name)) {
-      item.classList.add('placed');
-    }
     elements.lists.unit.appendChild(item);
   });
   bindVehicleDragSources();
@@ -1396,16 +1546,17 @@ function renderUnitList() {
 function attemptPlaceSelectedUnit(coordinate) {
   if (state.setupLocked) return false;
   if (!coordinate) return false;
-  if (state.placedUnits.length >= MAX_UNITS) {
-    pushStatus(COPY.status.unitCapReached, 'warning');
-    return false;
-  }
   const unit = state.selectedUnit;
   if (!unit) {
     pushStatus(COPY.status.selectUnit, 'warning');
     return false;
   }
-  if (state.placedUnits.some((placed) => placed.name === unit.name)) {
+  const movingThisUnit = state.movingUnit?.name === unit.name;
+  if (!movingThisUnit && state.placedUnits.length >= MAX_UNITS) {
+    pushStatus(COPY.status.unitCapReached, 'warning');
+    return false;
+  }
+  if (!movingThisUnit && state.placedUnits.some((placed) => placed.name === unit.name)) {
     pushStatus(COPY.status.unitAlreadyPlaced, 'warning');
     playTone(SOUNDS.ALERT, 200);
     return false;
@@ -1416,8 +1567,20 @@ function attemptPlaceSelectedUnit(coordinate) {
     playTone(SOUNDS.ALERT, 250);
     return false;
   }
+  if (movingThisUnit) {
+    removeUnit(state.placementBoard, unit.name);
+  }
   placeUnit(state.placementBoard, unit, coordinates);
-  state.placedUnits.push({ ...unit, coordinates });
+  if (movingThisUnit) {
+    const placedRecord = state.placedUnits.find((placed) => placed.name === unit.name);
+    if (placedRecord) {
+      placedRecord.coordinates = coordinates;
+    }
+    state.movingUnit = null;
+    state.dragOffset = null;
+  } else {
+    state.placedUnits.push({ ...unit, coordinates });
+  }
   renderPlacementBoard();
   updateReadyButton();
   renderUnitList();
@@ -1613,18 +1776,23 @@ function setTurnBanner(message) {
 }
 
 function updateTopRailTitle() {
-  const title = elements?.hud?.topRailTitle;
-  if (!title) return;
+  const titles = elements?.hud?.topRailTitles;
+  if (!titles || titles.length === 0) return;
   const player = state.playerName?.trim();
   const opponent = getOpponentLabel('Opponent');
   if (!player && !state.opponentName) {
-    title.textContent = '';
-    title.classList.add('is-empty');
+    titles.forEach((title) => {
+      title.textContent = '';
+      title.classList.add('is-empty');
+    });
     return;
   }
   const playerLabel = player || 'Player';
-  title.textContent = `${playerLabel} vs. ${opponent}`;
-  title.classList.remove('is-empty');
+  const text = `${playerLabel} vs. ${opponent}`;
+  titles.forEach((title) => {
+    title.textContent = text;
+    title.classList.remove('is-empty');
+  });
 }
 
 function showOverlayBanner(message, duration = 2400) {
