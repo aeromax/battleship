@@ -582,7 +582,7 @@ h1 {
     font-family: fw.$font-headline;
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    font-size: 0.9rem;
+    font-size: fw.$text-size-large;
     color: fw.$color-secondary;
     text-align: right;
     white-space: nowrap;
