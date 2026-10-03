@@ -4,6 +4,9 @@ const HomeScreen = () => (
       <div className="command-logo">
         <h1>GRID OPS</h1>
       </div>
+      <p className="eyebrow">TACTICAL COMMAND / SECTOR 09</p>
+      <p className="home-intro">Outthink. Outmaneuver. Open fire.</p>
+      <p className="home-description">Deploy six units. Read the battlefield. Find the enemy before they find you.</p>
       <div className="flex-column action-area">
         <div className="flex-row action-area--track">
           <div className="flex-row align-center justify-center flex-gap-md action-area--panel action-area--buttons">
@@ -27,7 +30,7 @@ const HomeScreen = () => (
               </div>
             </div>
             <div className="flex-grow grid-12">
-              <button id="cancelCallsignBtn" className="col-span-2 button secondary large">
+              <button id="cancelCallsignBtn" aria-label="Back to main menu" className="col-span-2 button secondary large">
                 <span className="material-symbols-outlined">
                   arrow_back
                 </span>
@@ -38,16 +41,22 @@ const HomeScreen = () => (
             </div>
           </div>
           <div className="grid-12 flex-column flex-around flex-gap-md action-area--panel action-area--game-mode">
-            <button id="cancelModeBtn" className="col-span-2 button secondary ">
+            <div id="soloOptions" className="difficulty-options col-span-12" aria-label="Computer difficulty">
+              <span>AI difficulty</span>
+              <button className="chip selected" data-difficulty="low" aria-pressed="true">Recruit</button>
+              <button className="chip" data-difficulty="medium" aria-pressed="false">Veteran</button>
+              <button className="chip" data-difficulty="hard" aria-pressed="false">Elite</button>
+            </div>
+            <button id="cancelModeBtn" aria-label="Back to callsign" className="col-span-2 button secondary ">
               <span className="material-symbols-outlined">
                 arrow_back
               </span>
             </button>
             <button id="startSoloBtn" className="col-span-5 button primary " data-mode="solo">
-              Human vs. Computer
+              Solo operation
             </button>
             <button id="continueBtn" className="col-span-5 button primary " data-mode="pvp">
-              tactical link <br />
+              Tactical link <br />
               <small>Play online with another human</small>
             </button>
           </div>
@@ -112,7 +121,7 @@ const MapGrid = ({ boardId, showAxis = false, showCellCoords = false }) => (
 const TopRail = ({ }) => (
   <div className="col-span-12 top-rail flex-row flex-between flex-gap-md justify-start">
     <div className="command-logo" alt="GridOps logo" />
-    <div className="top-rail-title" aria-live="polite"></div>
+    <div className="top-rail-title"></div>
   </div>
 );
 const OverlayBanner = () => {
@@ -177,7 +186,7 @@ const OverlayBanner = () => {
 };
 
 const MatchRequestDialog = () => (
-  <div id="matchRequestModal" className="modal hidden" role="dialog" aria-modal="true">
+  <div id="matchRequestModal" className="modal hidden" role="dialog" aria-modal="true" aria-labelledby="matchRequestMessage">
     <div className="modal-content match-request">
       <p id="matchRequestMessage" className="modal-message"></p>
       <div className="modal-actions flex-row flex-gap-sm justify-center">
@@ -217,7 +226,7 @@ const WaitingForOpponentDialog = () => (
 );
 
 const ReconnectDialog = () => (
-  <div id="reconnectModal" className="modal hidden" role="dialog" aria-modal="true">
+  <div id="reconnectModal" className="modal hidden" role="dialog" aria-modal="true" aria-labelledby="reconnectMessage">
     <div className="modal-content match-request">
       <p id="reconnectMessage" className="modal-message"></p>
       <div className="modal-actions flex-row flex-gap-sm justify-center">
@@ -233,7 +242,7 @@ const ReconnectDialog = () => (
 );
 
 const PostGameDialog = () => (
-  <div id="postGameModal" className="modal hidden" role="dialog" aria-modal="true">
+  <div id="postGameModal" className="modal hidden" role="dialog" aria-modal="true" aria-labelledby="postGameTitle">
     <div className="modal-content post-game">
       <h2 id="postGameTitle" className="modal-title"></h2>
       <p id="postGameMessage" className="modal-message"></p>
@@ -252,10 +261,12 @@ const PostGameDialog = () => (
 );
 
 const AttackBoardPanel = () => (
-  <div id="attack-board" className="panel attack-board-panel flex-column flex-between flex-gap-md">
+  <div id="attack-board" className="panel attack-board-panel flex-column flex-gap-md">
+    <div className="board-heading"><div><span className="eyebrow">02 / OFFENSE</span><h2>Enemy sector</h2></div><span className="signal">LIVE INTEL</span></div>
     <MapGrid boardId="attackBoard" showAxis={false} showCellCoords />
+    <p id="targetHint" className="board-hint">Select a sector, then confirm your strike.</p>
     <button id="fireBtn" className="large align-stretch red disabled" disabled>
-      Fire!
+      Select a target
     </button>
   </div>
 );
@@ -263,15 +274,17 @@ const AttackBoardPanel = () => (
 const RightRail = ({ mode }) => {
   const vehiclesPanel = (
     <div className="panel vehicles-panel flex-column flex-around align-center flex-gap-md">
+      <div className="board-heading"><div><span className="eyebrow">YOUR LOADOUT</span><h2>Deploy forces</h2></div></div>
+      <p id="deploymentProgress" className="board-hint" aria-live="polite">0 / 6 units deployed</p>
       <div id="unitList" className="unit-list flex-column align-stretch flex-gap-sm"></div>
       <div className="orientation-toggle flex-row flex-between align-stretch  align-center">
         <div className="panel--head"><span>Orientation</span></div>
         <div className="flex flex-around flex-gap-sm">
-          <button data-orientation="horizontal" className="button secondary small selected">
-            <span className="material-symbols-outlined">width</span>
+          <button aria-label="Horizontal orientation" aria-pressed="true" data-orientation="horizontal" className="button secondary small selected">
+            Horizontal
           </button>
-          <button data-orientation="vertical" className="button secondary small">
-            <span className="material-symbols-outlined">height</span>
+          <button aria-label="Vertical orientation" aria-pressed="false" data-orientation="vertical" className="button secondary small">
+            Vertical
           </button>
         </div>
       </div>
@@ -316,6 +329,8 @@ const SetupScreen = () => (
     <div className="grid-12">
       <TopRail />
       <div className="col-span-9 map-area">
+        <div className="board-heading"><div><span className="eyebrow">01 / PREPARATION</span><h2>Your deployment zone</h2></div></div>
+        <p className="board-hint">Select a unit, then a sector. R rotates. Drag to reposition.</p>
         <MapGrid boardId="placementBoard" label="Deployment Grid" showCellCoords />
       </div>
       <div className="col-span-3">
@@ -325,17 +340,32 @@ const SetupScreen = () => (
   </section >
 );
 const GameScreen = () => (
-  <section id="gameScreen" className="flex-row justify-center align-center screen hidden">
-    <div className="grid-12">
+  <section id="gameScreen" className="screen hidden">
+    <div className="combat-layout">
       <TopRail />
-      <div className="col-span-9 map-area">
-        <MapGrid boardId="playerBoard" label="Player Board" showCellCoords />
+      <div className="mission-hud"><span id="turnBanner" role="status">Awaiting orders</span><span id="combatStats">0 shots · 0% accuracy</span></div>
+      <div className="combat-boards">
+        <AttackBoardPanel />
+        <div className="panel defense-panel">
+          <div className="board-heading"><div><span className="eyebrow">01 / DEFENSE</span><h2>Your sector</h2></div><span id="fleetStatus" className="signal">6 UNITS ACTIVE</span></div>
+          <MapGrid boardId="playerBoard" showCellCoords />
+          <div className="board-legend"><span>× Hit</span><span>• Miss</span><span>⌖ Selected target</span></div>
+        </div>
       </div>
-      <div className="col-span-3">
-        <RightRail mode="game" />
-      </div>
+      <div className="combat-footer panel"><div><span className="eyebrow">FIELD REPORT</span><div id="statusFeed" className="status-feed" role="log" aria-live="polite" aria-relevant="additions"></div></div><button id="abortMissionBtn" className="button secondary small">End mission</button></div>
     </div>
   </section>
+);
+
+const GamePreferences = () => (
+  <div className="preferences">
+    <span className="eyebrow">GRIDOPS / COMMAND LINK</span>
+    <div className="preference-controls">
+      <button id="soundToggle" className="button secondary small" aria-pressed="false">Sound on</button>
+      <label className="volume-control">Volume <input id="sfxVolume" type="range" min="0" max="100" defaultValue="55" /></label>
+      <details className="help-menu"><summary>How to play</summary><div className="help-content"><h2>Every sector counts.</h2><p>Place all six units manually or use Random Layout. Units cannot overlap. Click an occupied sector to pick up its unit.</p><p>Take turns firing one shot. Destroy all six enemy units to win. Hits are ×, misses are •.</p><p>Keyboard: Tab to a board, arrow keys to navigate, Enter or Space to select. R rotates during deployment. Confirm attacks with the Fire button.</p><p>Recruit searches randomly. Veteran follows hits. Elite also tracks the direction of damaged units. No difficulty sees hidden units.</p></div></details>
+    </div>
+  </div>
 );
 
 const StyleGuide = () => (
@@ -516,7 +546,8 @@ function AppShell() {
 
   return (
     <div id="app" className="app">
-      <div className="crt-overlay"></div>
+      <div className="crt-overlay" aria-hidden="true"></div>
+      <GamePreferences />
       <OverlayBanner />
       {isStylePage ? (
         <main className="screens style-shell">
