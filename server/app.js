@@ -1,3 +1,4 @@
+import { chooseTarget } from './tactical-ai.mjs';
 import { ROWS, COLUMNS, MODES, GAME_MODES, DIFFICULTIES, SOUNDS } from './game_setup.js';
 import { MAX_UNITS, AVAILABLE_UNITS, UNIT_IMAGES } from './vehicles.js';
 
@@ -180,28 +181,34 @@ const rematchState = {
 };
 let outgoingRejectionTimer = null;
 
-function playSfx(path) {
-  if (typeof Audio === 'undefined' || !path) {
-    return Promise.resolve();
+let audioContext;
+let soundSettings = { muted: false, volume: 0.55 };
+try {
+  const saved = JSON.parse(localStorage.getItem('gridops-audio'));
+  if (saved && typeof saved.muted === 'boolean' && Number.isFinite(saved.volume)) {
+    soundSettings = { muted: saved.muted, volume: Math.max(0, Math.min(1, saved.volume)) };
   }
-  return new Promise((resolve) => {
-    const audio = new Audio(path);
-    audio.preload = 'auto';
-    let resolved = false;
-    const finalize = () => {
-      if (resolved) return;
-      resolved = true;
-      audio.removeEventListener('ended', finalize);
-      audio.removeEventListener('error', finalize);
-      resolve();
-    };
-    audio.addEventListener('ended', finalize);
-    audio.addEventListener('error', finalize);
-    const playPromise = audio.play();
-    if (playPromise && typeof playPromise.catch === 'function') {
-      playPromise.catch(finalize);
-    }
-  });
+} catch { /* Storage is optional, including private browsing. */ }
+const activeSounds = new Set();
+function playSfx(path) {
+  // Audio is feedback, never the clock that advances a turn.
+  if (typeof Audio === 'undefined' || !path || soundSettings.muted || document.hidden) return;
+  const audio = new Audio(path);
+  audio.volume = soundSettings.volume;
+  activeSounds.add(audio);
+  const cleanup = () => activeSounds.delete(audio);
+  audio.addEventListener('ended', cleanup, { once: true });
+  audio.addEventListener('error', cleanup, { once: true });
+  try { audio.play()?.catch(cleanup); } catch { cleanup(); }
+}
+
+function syncSoundSettings() {
+  const button = document.getElementById('soundToggle');
+  button.textContent = soundSettings.muted ? 'Sound off' : 'Sound on';
+  button.setAttribute('aria-pressed', String(soundSettings.muted));
+  document.getElementById('sfxVolume').value = Math.round(soundSettings.volume * 100);
+  activeSounds.forEach(audio => { audio.volume = soundSettings.muted ? 0 : soundSettings.volume; });
+  try { localStorage.setItem('gridops-audio', JSON.stringify(soundSettings)); } catch {}
 }
 
 function animateCell(cell, type) {
@@ -238,7 +245,7 @@ let transparentDragImage = null;
 
 function syncAttackInterface() {
   if (!elements) return;
-  const overlayActive = Boolean(state.playerTurn && state.dieComplete);
+  const overlayActive = Boolean(state.gameStarted && state.playerTurn && state.dieComplete);
   if (elements.screens?.game) {
     elements.screens.game.classList.toggle('attack-mode', overlayActive);
   }
@@ -247,6 +254,7 @@ function syncAttackInterface() {
     const canFire = overlayActive && Boolean(state.attackSelection);
     fireButton.disabled = !canFire;
     fireButton.classList.toggle('disabled', !canFire);
+    fireButton.textContent = canFire ? `Fire at ${state.attackSelection}` : overlayActive ? 'Select a target' : 'Awaiting opponent';
   }
 }
 
@@ -686,6 +694,13 @@ function bindVehicleDragSources() {
   icons.forEach((icon) => {
     const unitName = icon.dataset.unit;
     if (!unitName) return;
+    icon.addEventListener('click', () => {
+      state.movingUnit = null;
+      state.dragOffset = null;
+      startDraggingUnit(unitName);
+      state.draggingUnit = null;
+      playTone(420);
+    });
     const handleTouchStart = (event) => {
       event.preventDefault();
       const unit = startDraggingUnit(unitName);
@@ -1108,7 +1123,7 @@ function scheduleLocalAutoSave() {
   }
   autoSaveTimer = window.setTimeout(() => {
     autoSaveTimer = null;
-    persistLocalSave(state.playerName, buildSoloSavePayload());
+    if (canAutoSaveSolo()) persistLocalSave(state.playerName, buildSoloSavePayload());
   }, AUTO_SAVE_DEBOUNCE_MS);
 }
 
@@ -1152,6 +1167,7 @@ function slideActionAreaTrackTo(targetIndex = 0) {
   const clampedIndex = Math.min(Math.max(targetIndex, 0), panelCount - 1);
   panels.forEach((panel, index) => {
     panel.setAttribute('aria-hidden', index !== clampedIndex);
+    panel.inert = index !== clampedIndex;
   });
   track.style.setProperty('--action-panel-index', clampedIndex);
   track.dataset.activePanelIndex = `${clampedIndex}`;
@@ -1175,8 +1191,27 @@ function handleNewDeploymentStart() {
   return true;
 }
 
-function playTone() {
-  // Sound effects disabled.
+function playTone(frequency = 440, duration = 80) {
+  if (soundSettings.muted || !soundSettings.volume || document.hidden) return;
+  try {
+    const Context = window.AudioContext || window.webkitAudioContext;
+    if (!Context) return;
+    audioContext ||= new Context();
+    if (audioContext.state === 'suspended') void audioContext.resume().catch(() => {});
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const now = audioContext.currentTime;
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(frequency, now);
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(60, frequency * 0.7), now + duration / 1000);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(soundSettings.volume * 0.12, now + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration / 1000);
+    oscillator.connect(gain).connect(audioContext.destination);
+    oscillator.start();
+    oscillator.stop(now + duration / 1000);
+    oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+  } catch { /* Gameplay remains available without audio hardware. */ }
 }
 
 function createEmptyBoard() {
@@ -1325,7 +1360,6 @@ function canPlaceUnit(board, unit, startCoordinate, orientation) {
 }
 
 function placeUnit(board, unit, coordinates) {
-  console.log(`Placing unit ${unit.name} at ${coordinates.join(', ')}`);
   board.units.push({
     name: unit.name,
     size: unit.size,
@@ -1353,6 +1387,10 @@ function removeUnitAtCoordinate(board, coordinate) {
 }
 
 function resetPlacementBoard() {
+  state.selectedUnit = AVAILABLE_UNITS[0];
+  state.movingUnit = null;
+  state.draggingUnit = null;
+  state.dragOffset = null;
   state.placementBoard = createEmptyBoard();
   state.placedUnits = [];
   renderPlacementBoard();
@@ -1468,6 +1506,8 @@ function renderPlacementBoard() {
       const coord = `${row}${column}`;
       const cell = document.createElement('div');
       cell.className = 'cell';
+      cell.tabIndex = coord === 'A1' ? 0 : -1;
+      cell.setAttribute('role', 'button');
       cell.dataset.coord = coord;
       const occupant = state.placementBoard.cells[coord].occupant;
       if (occupant) {
@@ -1565,6 +1605,7 @@ function renderPlayerBoard() {
       } else if (cell.hit) {
         cellEl.classList.add('miss');
       }
+      if (cell.hit) cellEl.setAttribute('aria-label', `${coord}: ${cell.occupant ? 'hit' : 'miss'}`);
       const coordLabel = document.createElement('span');
       coordLabel.className = 'cell-coord';
       coordLabel.textContent = coord;
@@ -1584,6 +1625,10 @@ function renderAttackBoard() {
       const cellEl = document.createElement('div');
       cellEl.className = 'cell';
       cellEl.dataset.coord = coord;
+      cellEl.tabIndex = coord === 'A1' ? 0 : -1;
+      cellEl.setAttribute('role', 'button');
+      cellEl.setAttribute('aria-label', `${coord}: ${state.attackResults[coord] || 'unknown sector'}`);
+      cellEl.setAttribute('aria-disabled', String(state.attackHistory.has(coord)));
       const result = state.attackResults?.[coord];
       if (result === 'hit') {
         cellEl.classList.add('hit');
@@ -1620,6 +1665,12 @@ function renderUnitList() {
     }
     const item = document.createElement('div');
     item.className = 'unit-item';
+    item.tabIndex = 0;
+    item.setAttribute('role', 'button');
+    item.setAttribute('aria-label', `${unit.name}, ${unit.size} sectors`);
+    item.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); item.click(); }
+    });
     item.dataset.unit = unit.name;
     item.draggable = true;
     item.innerHTML = `
@@ -1677,9 +1728,11 @@ function attemptPlaceSelectedUnit(coordinate) {
   } else {
     state.placedUnits.push({ ...unit, coordinates });
   }
+  state.selectedUnit = AVAILABLE_UNITS.find(item => !state.placedUnits.some(placed => placed.name === item.name)) || null;
   renderPlacementBoard();
   updateReadyButton();
   renderUnitList();
+  playTone(480, 90);
   return true;
 }
 
@@ -1755,6 +1808,7 @@ function handleMenuKeydown(event) {
 }
 
 function resetSessionState({ clearLocalSave = false } = {}) {
+  window.clearTimeout(aiTurnTimer);
   hideWaitingForOpponentDialog();
   clearMpReconnect();
   state.mode = null;
@@ -1822,6 +1876,8 @@ function handleMenuAction(action) {
 }
 
 function updateReadyButton() {
+  const progress = document.getElementById('deploymentProgress');
+  if (progress) progress.textContent = `${state.placedUnits.length} / ${MAX_UNITS} units deployed`;
   const ready = elements.buttons.ready;
   if (state.placedUnits.length === MAX_UNITS) {
     ready.classList.remove('disabled');
@@ -1833,6 +1889,10 @@ function updateReadyButton() {
 }
 
 function pushStatus(message, context = 'info') {
+  if (state.view === MODES.SETUP) {
+    const progress = document.getElementById('deploymentProgress');
+    if (progress) progress.textContent = message.replace(/<[^>]*>/g, '');
+  }
   const timestamp = new Date().toLocaleTimeString();
   state.statusMessages.push({ message, timestamp, context });
   if (state.statusMessages.length > 20) {
@@ -1872,7 +1932,17 @@ function resetRoundCounter() {
   state.roundActive = false;
 }
 
+function updateCombatStats() {
+  const shots = state.attackHistory.size;
+  const hits = Object.values(state.attackResults).filter(result => result === 'hit').length;
+  const stats = document.getElementById('combatStats');
+  if (stats) stats.textContent = `${shots} shots · ${shots ? Math.round(hits / shots * 100) : 0}% accuracy · ${state.attackDestroyedUnits.length} / 6 destroyed`;
+  const fleet = document.getElementById('fleetStatus');
+  if (fleet && state.playerBoard) fleet.textContent = `${state.playerBoard.units.filter(unit => !unit.coordinates.every(coord => state.playerBoard.cells[coord].hit)).length} UNITS ACTIVE`;
+}
+
 function setTurnBanner(message) {
+  updateCombatStats();
   if (!elements?.hud?.turnBanner) {
     return;
   }
@@ -2299,11 +2369,20 @@ function setPostGameButtons({
 }
 
 function showPostGameModal(title, message) {
+  window.clearTimeout(aiTurnTimer);
+  state.gameStarted = false;
+  state.playerTurn = false;
+  state.attackSelection = null;
+  syncAttackInterface();
+  updateBeforeUnloadGuard();
+  playTone(title.includes('Success') ? 880 : 180, 400);
+  const hits = Object.values(state.attackResults).filter(result => result === 'hit').length;
+  message += ` ${state.attackHistory.size} shots fired · ${state.attackHistory.size ? Math.round(hits / state.attackHistory.size * 100) : 0}% accuracy.`;
   elements.hud.postGameTitle.textContent = title;
   elements.hud.postGameMessage.textContent = message;
   setPostGamePrompt('Play again?');
   setPostGameStatus('');
-  setPostGameButtons({ disableYes: false, disableNo: false, noLabel: 'No', yesLabel: 'Yes' });
+  setPostGameButtons({ disableYes: false, disableNo: false, noLabel: 'Return to base', yesLabel: 'Play again' });
   rematchState.active = true;
   rematchState.voted = null;
   toggleModal('postGame', true);
@@ -2377,6 +2456,7 @@ function startPvpMatchSession({ gameId, opponentName }) {
 }
 
 function setupSoloSession() {
+  window.clearTimeout(aiTurnTimer);
   resetRematchState();
   state.mode = GAME_MODES.SOLO;
   state.opponentName = pickAiCallsign();
@@ -2448,7 +2528,7 @@ function establishInitiative() {
   syncAttackInterface();
   startRoundIfNeeded();
   if (!playerStarts) {
-    window.setTimeout(aiTakeTurn, 1100);
+    scheduleAiTurn();
   }
 }
 
@@ -2525,7 +2605,7 @@ function resolveAttackAgainstBoard(board, coordinate) {
 }
 
 function handlePlayerAttack(coordinate) {
-  if (!state.playerTurn || !state.dieComplete) {
+  if (!state.gameStarted || !state.playerTurn || !state.dieComplete) {
     pushStatus(COPY.status.holdFire, 'warning');
     return;
   }
@@ -2543,6 +2623,7 @@ function handlePlayerAttack(coordinate) {
     cellEl.classList.add('selected-target', 'occupied');
   }
   state.attackSelection = coordinate;
+  playTone(620, 70);
   const fireButton = elements?.buttons?.fire;
   if (fireButton) {
     fireButton.disabled = false;
@@ -2553,8 +2634,11 @@ function handlePlayerAttack(coordinate) {
 }
 
 async function finalizePlayerAttack() {
-  if (!state.attackSelection) return;
+  if (!state.gameStarted || !state.playerTurn || !state.dieComplete || !state.attackSelection || state.attackHistory.has(state.attackSelection)) return;
   const coordinate = state.attackSelection;
+  state.playerTurn = false;
+  state.attackSelection = null;
+  syncAttackInterface();
   const fireButton = elements?.buttons?.fire;
   if (fireButton) {
     fireButton.disabled = true;
@@ -2562,7 +2646,7 @@ async function finalizePlayerAttack() {
   }
   state.attackHistory.add(coordinate);
   if (state.mode === GAME_MODES.SOLO) {
-    await playSfx(SFX_PATHS.FIRE);
+    playSfx(SFX_PATHS.FIRE);
     const opponentLabel = getOpponentLabel('Enemy');
     const result = resolveAttackAgainstBoard(state.aiBoard, coordinate);
     state.attackResults[coordinate] = result.hit ? 'hit' : 'miss';
@@ -2570,8 +2654,10 @@ async function finalizePlayerAttack() {
     if (cellEl) {
       cellEl.classList.remove('selected-target', 'occupied');
       cellEl.classList.add(result.hit ? 'hit' : 'miss');
+      cellEl.setAttribute('aria-label', `${coordinate}: ${result.hit ? 'hit' : 'miss'}`);
+      cellEl.setAttribute('aria-disabled', 'true');
     }
-    await playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
+    playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
     state.attackSelection = null;
     if (result.hit) {
       pushStatus(COPY.status.directHit(coordinate), 'success');
@@ -2602,7 +2688,7 @@ async function finalizePlayerAttack() {
     endRound();
     setTurnBanner('Opponent turn...');
     scheduleLocalAutoSave();
-    window.setTimeout(aiTakeTurn, 1000);
+    scheduleAiTurn();
   } else if (state.mode === GAME_MODES.PVP) {
     if (!state.gameId) return;
     socket.emit('attack', { gameId: state.gameId, coordinate });
@@ -2618,50 +2704,30 @@ async function finalizePlayerAttack() {
 }
 
 function aiChooseCoordinate() {
-  const available = [];
-  ROWS.forEach((row) => {
-    COLUMNS.forEach((col) => {
-      const coord = `${row}${col}`;
-      if (!state.aiShots.has(coord)) available.push(coord);
-    });
-  });
-  if (!available.length) return null;
-  if (state.difficulty === DIFFICULTIES.LOW) {
-    return available[Math.floor(Math.random() * available.length)];
-  }
-  if (state.difficulty === DIFFICULTIES.MEDIUM) {
-    const targets = available.filter((coord) => {
-      const indices = coordinateToIndices(coord);
-      return (indices.rowIndex + indices.columnIndex) % 2 === 0;
-    });
-    if (targets.length) {
-      return targets[Math.floor(Math.random() * targets.length)];
-    }
-    return available[Math.floor(Math.random() * available.length)];
-  }
-  const priority = available.filter((coord) => {
-    const indices = coordinateToIndices(coord);
-    return indices.rowIndex === 4 || indices.columnIndex === 4;
-  });
-  if (priority.length) {
-    return priority[Math.floor(Math.random() * priority.length)];
-  }
-  return available[Math.floor(Math.random() * available.length)];
+  const hits = [...state.aiShots].filter(coord => state.playerBoard.cells[coord]?.occupant);
+  const sunk = state.playerBoard.units.filter(unit => unit.coordinates.every(coord => state.aiShots.has(coord))).flatMap(unit => unit.coordinates);
+  return chooseTarget({ shots: [...state.aiShots], hits, sunk, difficulty: state.difficulty });
+}
+
+let aiTurnTimer;
+function scheduleAiTurn() {
+  window.clearTimeout(aiTurnTimer);
+  aiTurnTimer = window.setTimeout(aiTakeTurn, 700);
 }
 
 async function aiTakeTurn() {
-  if (state.mode !== GAME_MODES.SOLO || state.playerTurn) return;
+  if (state.mode !== GAME_MODES.SOLO || state.playerTurn || !state.gameStarted || state.view !== MODES.GAME) return;
   const coordinate = aiChooseCoordinate();
   if (!coordinate) return;
   state.aiShots.add(coordinate);
   const result = resolveAttackAgainstBoard(state.playerBoard, coordinate);
   state.opponentAttackHistory.add(coordinate);
   const opponentLabel = getOpponentLabel('Enemy');
-  await playSfx(SFX_PATHS.FIRE);
+  playSfx(SFX_PATHS.FIRE);
   renderPlayerBoard();
   const playerCell = elements.boards.player.querySelector(`[data-coord="${coordinate}"]`);
   animateCell(playerCell, result.hit ? 'hit' : 'miss');
-  await playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
+  playSfx(result.hit ? SFX_PATHS.HIT : SFX_PATHS.MISS);
   if (result.hit) {
     const targetLabel = result.unitName ? result.unitName : 'unit';
     pushStatus(COPY.status.opponentHit(opponentLabel, targetLabel, coordinate), 'danger');
@@ -2688,6 +2754,59 @@ async function aiTakeTurn() {
 }
 
 function setupEventListeners() {
+  syncSoundSettings();
+  document.getElementById('soundToggle').addEventListener('click', () => {
+    soundSettings.muted = !soundSettings.muted;
+    syncSoundSettings();
+    playTone(600);
+  });
+  document.getElementById('sfxVolume').addEventListener('input', event => {
+    soundSettings.volume = Number(event.target.value) / 100;
+    syncSoundSettings();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { activeSounds.forEach(audio => audio.pause()); activeSounds.clear(); }
+  });
+  elements.buttons.abortMission?.addEventListener('click', () => {
+    if (!window.confirm('End this mission and return to base?')) return;
+    if (state.mode === GAME_MODES.PVP) socket.emit('cancelMatch');
+    resetSessionState({ clearLocalSave: true });
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key.toLowerCase() === 'r' && state.view === MODES.SETUP && !event.target.closest('input, textarea, select')) {
+      event.preventDefault();
+      document.querySelector(`[data-orientation="${state.orientation === 'horizontal' ? 'vertical' : 'horizontal'}"]`).click();
+    }
+  });
+  [elements.boards.placement, elements.boards.attack].forEach(board => {
+    board.addEventListener('keydown', event => {
+      const cell = event.target.closest('.cell');
+      if (!cell) return;
+      const offsets = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -9, ArrowDown: 9 };
+      if (event.key in offsets) {
+        event.preventDefault();
+        const cells = [...board.querySelectorAll('.cell')];
+        const index = cells.indexOf(cell);
+        const next = Math.max(0, Math.min(80, index + offsets[event.key]));
+        cell.tabIndex = -1;
+        cells[next].tabIndex = 0;
+        cells[next].focus();
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        cell.click();
+      }
+    });
+  });
+  elements.boards.placement.addEventListener('click', event => {
+    if (state.setupLocked) return;
+    const cell = event.target.closest('.cell');
+    if (!cell) return;
+    const coord = cell.dataset.coord;
+    const unit = getUnitAtCoordinate(state.placementBoard, coord);
+    if (unit && !state.movingUnit) { beginMovingUnit(unit, coord); state.draggingUnit = null; }
+    else attemptPlaceSelectedUnit(coord);
+    elements.boards.placement.querySelector(`[data-coord="${coord}"]`)?.focus();
+  });
   if (elements?.buttons?.newGame) {
     elements.buttons.newGame.addEventListener('click', () => {
       showCallsignPanel();
@@ -2759,6 +2878,7 @@ function setupEventListeners() {
       state.orientation = button.dataset.orientation;
       elements.toggles.orientation.forEach((btn) => btn.classList.remove('selected'));
       button.classList.add('selected');
+      elements.toggles.orientation.forEach(btn => btn.setAttribute('aria-pressed', String(btn === button)));
     });
   });
 
@@ -2766,6 +2886,7 @@ function setupEventListeners() {
     button.addEventListener('click', () => {
       elements.toggles.difficulty.forEach((btn) => btn.classList.remove('selected'));
       button.classList.add('selected');
+      elements.toggles.difficulty.forEach(btn => btn.setAttribute('aria-pressed', String(btn === button)));
       state.difficulty = button.dataset.difficulty;
     });
   });
@@ -3014,15 +3135,17 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
   try {
     const opponentLabel = getOpponentLabel('Enemy');
     if (attacker === state.socketId) {
-      await playSfx(SFX_PATHS.FIRE);
+      playSfx(SFX_PATHS.FIRE);
       state.attackResults[coordinate] = result.hit ? 'hit' : 'miss';
       state.attackHistory.add(coordinate);
       const cellEl = elements.boards.attack.querySelector(`[data-coord="${coordinate}"]`);
       if (cellEl) {
         cellEl.classList.remove('selected-target');
         cellEl.classList.add(result.hit ? 'hit' : 'miss');
+        cellEl.setAttribute('aria-label', `${coordinate}: ${result.hit ? 'hit' : 'miss'}`);
+        cellEl.setAttribute('aria-disabled', 'true');
       }
-      await playSfx(soundPath);
+      playSfx(soundPath);
       if (result.hit) {
         pushStatus(COPY.status.directHit(coordinate), 'success');
         if (result.destroyedUnit) {
@@ -3043,11 +3166,11 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
     } else {
       state.opponentAttackHistory.add(coordinate);
       const resultBoard = resolveAttackAgainstBoard(state.playerBoard, coordinate);
-      await playSfx(SFX_PATHS.FIRE);
+      playSfx(SFX_PATHS.FIRE);
       renderPlayerBoard();
       const playerCell = elements.boards.player.querySelector(`[data-coord="${coordinate}"]`);
       animateCell(playerCell, resultBoard.hit ? 'hit' : 'miss');
-      await playSfx(soundPath);
+      playSfx(soundPath);
       if (resultBoard.hit) {
         pushStatus(
           COPY.status.ourUnitHit(resultBoard.destroyed || 'unit', coordinate),
@@ -3061,6 +3184,7 @@ socket.on('attackResult', async ({ attacker, coordinate, result }) => {
         pushStatus(COPY.status.opponentAttackUnsuccessful(opponentLabel), 'success');
       }
     }
+    updateCombatStats();
     if (state.mode === GAME_MODES.PVP && state.playerTurn) {
       showOverlayBanner('Your turn!');
     }
@@ -3153,6 +3277,7 @@ socket.on('opponentLeft', ({ name } = {}) => {
 
 function loadSavedGame(data) {
   if (data.mode === 'solo') {
+    window.clearTimeout(aiTurnTimer);
     state.mode = GAME_MODES.SOLO;
     state.difficulty = data.difficulty || DIFFICULTIES.LOW;
     state.opponentName = data.opponentName || pickAiCallsign();
@@ -3161,7 +3286,7 @@ function loadSavedGame(data) {
     state.playerTurn = data.player.turn;
     state.attackHistory = new Set(data.player.attackHistory || []);
     state.attackResults = {};
-    state.attackDestroyedUnits = [];
+    state.attackDestroyedUnits = buildDestroyedUnitsFromBoard(state.aiBoard);
     state.attackHistory.forEach((coord) => {
       const cell = state.aiBoard?.cells?.[coord];
       if (!cell || !cell.hit) {
@@ -3192,6 +3317,8 @@ function loadSavedGame(data) {
     }
     syncAttackInterface();
     switchScreen(MODES.GAME);
+    if (!state.playerTurn) scheduleAiTurn();
+    updateTopRailTitle();
     scheduleLocalAutoSave();
     updateBeforeUnloadGuard();
   } else if (data.mode === 'pvp') {

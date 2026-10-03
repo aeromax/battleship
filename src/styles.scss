@@ -1430,3 +1430,118 @@ button.red {
     align-items: flex-start;
   }
 }
+
+// Tactical interface: clear hierarchy, equal board priority, and native input feedback.
+:root { color-scheme: dark; }
+body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  letter-spacing: 0.015em;
+  background: linear-gradient(110deg, rgba(7, 15, 22, .96), rgba(7, 15, 22, .86)), url('/assets/img/battlefield.png') center / cover fixed;
+  color: #e7edf1;
+}
+h2, h3, button, .input-field { font-family: inherit; }
+h2 { font-size: clamp(1.1rem, 2vw, 1.55rem); letter-spacing: -.025em; text-transform: none; }
+.screens { padding: 20px 24px 36px; align-items: flex-start; }
+.screen { width: min(1240px, 100%); height: auto; max-height: none; transform: none; }
+.screen.home { height: auto; margin: auto; max-width: 690px; }
+.panel { background: rgba(16, 29, 38, .94); border: 1px solid #2b3e49; border-radius: 12px; box-shadow: 0 18px 50px #0003; }
+#homeScreen > .panel { padding: clamp(24px, 5vw, 48px); gap: 16px; }
+#homeScreen .command-logo { width: 230px; height: 150px; }
+.eyebrow { color: #8da4b1; font: 600 11px/1.5 ui-monospace, monospace; letter-spacing: .16em; text-transform: uppercase; margin: 0; }
+.home-intro { font-size: clamp(25px, 4vw, 36px); font-weight: 700; letter-spacing: -.04em; text-align: center; margin: 0; }
+.home-description { color: #a9bbc5; line-height: 1.65; max-width: 430px; text-align: center; margin: 0 0 12px; }
+.action-area--track { align-items: center; }
+.action-area--game-mode { row-gap: 18px; }
+.difficulty-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.difficulty-options > span { margin-right: auto; color: #a9bbc5; }
+button, .button {
+  min-height: 44px; border: 1px solid #415664; border-radius: 7px; padding: 12px 18px;
+  background: #243744; color: #e7edf1; box-shadow: none; text-transform: none;
+  letter-spacing: .02em; font: 600 14px/1.3 ui-sans-serif, system-ui, sans-serif;
+  transform: none; cursor: pointer;
+}
+button::before, button::after { display: none; }
+button:hover, .button:hover { background: #324b5b; box-shadow: none; transform: none; }
+button.primary, button.red { background: #c4f36b; border-color: #c4f36b; color: #15220b; box-shadow: none; }
+button.primary:hover, button.red:hover { background: #d6ff8b; box-shadow: none; }
+button.secondary { background: #182b36; color: #d2dfe6; box-shadow: none; }
+button.small { padding: 8px 12px; min-height: 40px; font-size: 12px; }
+button:disabled, button.disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+button.chip { min-height: 36px; padding: 8px 12px; font-size: 12px; }
+button.selected { border-color: #c4f36b; background: #35462a; color: #d4faaa; }
+:where(button, input, summary, [role='button']):focus-visible { outline: 3px solid #c4f36b; outline-offset: 3px; }
+.input-field { caret-color: #c4f36b; font-size: 20px; padding: 10px 14px; }
+.input-shell::before { display: none; }
+.form-label { font: 600 12px/1.6 ui-sans-serif, system-ui, sans-serif; letter-spacing: .06em; }
+.preferences { width: min(1288px, 100%); margin: 0 auto; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #23343e; }
+.preference-controls { display: flex; align-items: center; gap: 18px; }
+.volume-control { display: flex; align-items: center; gap: 8px; color: #a9bbc5; font-size: 12px; }
+.volume-control input { width: 80px; accent-color: #c4f36b; }
+.help-menu { position: relative; font-size: 13px; }
+.help-menu summary { cursor: pointer; padding: 12px 0; }
+.help-content { position: absolute; right: 0; top: 42px; width: min(360px, 85vw); z-index: 200; padding: 22px; border: 1px solid #526b79; border-radius: 12px; background: #152630; box-shadow: 0 20px 60px #000a; line-height: 1.65; }
+.top-rail { align-items: center; margin-bottom: 4px; }
+.top-rail .command-logo { width: 145px; height: 60px; background-image: url('/assets/img/gridops_logo_h.png'); }
+.top-rail-title { font-size: 13px; color: #a9bbc5; text-transform: none; letter-spacing: .02em; }
+.combat-layout { display: flex; flex-direction: column; gap: 18px; }
+.mission-hud { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 20px; border: 1px solid #466333; border-left: 3px solid #c4f36b; background: #1d3022; border-radius: 8px; }
+#turnBanner { color: #d3f8a2; font-weight: 700; }
+#combatStats { color: #b9cbb5; font-size: 13px; }
+.combat-boards { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.board-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.board-heading h2 { margin-top: 4px; }
+.signal { font: 600 10px/1.5 ui-monospace, monospace; letter-spacing: .08em; color: #bddd9d; background: #293e2c; padding: 5px 8px; border-radius: 4px; }
+.combat-boards .panel { padding: 20px; }
+.combat-boards .map-shell, .map-area .map-shell { display: block; width: 100%; height: auto; max-height: none; aspect-ratio: 1; }
+.board { width: 100%; height: 100%; border-radius: 4px; border: 1px solid #526471; background: #0b1921; box-shadow: none; }
+.board .cell { min-width: 0; border-color: #324752; background: transparent; }
+#attackBoard { border: 1px solid #526471; touch-action: pan-y; }
+#attackBoard .cell { touch-action: pan-y; }
+#attackBoard .cell .cell-coord, .cell-coord { display: block; position: absolute; top: 5px; left: 5px; margin: 0; font: 500 clamp(8px, 1vw, 11px)/1 ui-monospace, monospace; letter-spacing: 0; color: #97acb9; }
+#attackBoard .cell:not(.hit):not(.miss):hover { background: #c4f36b18; border-color: #c4f36b; cursor: crosshair; }
+#attackBoard .cell.selected-target { background: #c4f36b25; outline: 2px solid #c4f36b; outline-offset: -3px; }
+#attackBoard .cell.selected-target::after { content: '⌖'; color: #d7ff9b; font-size: 28px; }
+#attackBoard .cell.hit, #playerBoard .cell.hit { background: #632e27; border-color: #ed8269; }
+#attackBoard .cell.hit::after, #playerBoard .cell.hit::after { content: '×'; color: #ffb3a1; font: 700 28px/1 system-ui; z-index: 5; animation: none; }
+#attackBoard .cell.miss, #playerBoard .cell.miss { background: #1c303e; box-shadow: none; }
+#attackBoard .cell.miss::after, #playerBoard .cell.miss::after { content: '•'; color: #adc3d4; font: 700 24px/1 system-ui; z-index: 5; }
+.board-hint { margin: 0; font-size: 13px; line-height: 1.6; color: #a9bbc5; }
+.board-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; color: #a9bbc5; font-size: 12px; padding: 20px 0 0; }
+#fireBtn { width: 100%; min-height: 48px; }
+.combat-footer { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; }
+.combat-footer .status-feed { height: 88px; overflow-y: auto; font-size: 13px; line-height: 1.6; margin-top: 8px; }
+.status-item { padding: 3px 0; }
+.status-danger { color: #ffaf9c; }.status-success { color: #c4f36b; }.status-round { color: #7b949f; font-size: 11px; }
+#setupScreen > .grid-12 { grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); grid-template-rows: auto auto; }
+#setupScreen .top-rail { grid-column: 1 / -1; }
+#setupScreen .col-span-9, #setupScreen .col-span-3 { grid-column: auto; }
+#setupScreen .map-area { aspect-ratio: auto; max-height: none; }
+#setupScreen .map-area > .board-hint { margin: -4px 0 14px; }
+.orientation-toggle { flex-wrap: wrap; gap: 12px; }
+.orientation-toggle .flex { display: flex; }
+.unit-item { min-height: 60px; padding: 8px 12px; border: 1px solid #324752; border-radius: 8px; background: #162833; }
+.unit-item.selected { border-color: #c4f36b; background: #263c2b; }
+.unit-meta strong { font-family: inherit; font-size: 13px; letter-spacing: 0; }
+.unit-size { font-size: 11px; color: #a9bbc5; }
+.overlay-banner { inset: auto 16px 24px; background: transparent; transform: none; }
+.overlay-banner--visible { background: transparent; }
+.overlay-banner__message { padding: 14px 22px; max-width: 640px; border: 1px solid #526b79; border-radius: 10px; background: #142a25; font: 600 16px/1.5 system-ui; letter-spacing: .01em; text-transform: none; text-shadow: none; color: #d1f8a3; opacity: 1; }
+.overlay-banner.overlay-banner--visible .overlay-banner__message { animation: none; }
+.overlay-banner__message::before, .overlay-banner__message::after { display: none; }
+.modal-content { background: #142530; }.modal-message { font-size: 16px; line-height: 1.6; }.modal-title { font-size: 24px; }
+@media (max-width: 760px) {
+  .screens { padding: 16px 12px 24px; }.preferences { padding: 12px; flex-wrap: wrap; }
+  .preferences > .eyebrow { display: none; }.preference-controls { width: 100%; justify-content: space-between; gap: 8px; }
+  .combat-boards { grid-template-columns: 1fr; }.combat-boards .panel { padding: 14px; }
+  .mission-hud { align-items: flex-start; flex-direction: column; gap: 6px; }
+  #setupScreen > .grid-12 { grid-template-columns: minmax(0, 1fr); }
+  .combat-footer { grid-template-columns: 1fr; }.top-rail-title { max-width: 50%; text-align: right; }
+  .board .cell .cell-coord { font-size: 10px; }.home-description { font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+button, .button { margin: 0; }
+button:hover, .button:hover { top: 0; left: 0; }
+.top-rail .top-rail-title { font: 500 13px/1.5 ui-sans-serif, system-ui, sans-serif; letter-spacing: .02em; text-transform: none; color: #a9bbc5; }
+.unit-item .unit-meta strong { letter-spacing: .01em; font-size: 13px; text-transform: none; }
